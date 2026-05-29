@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
 use napi::bindgen_prelude::Float64Array;
+use napi::bindgen_prelude::Unknown;
+use napi::Env;
 use napi_derive::napi;
 use serde::Serialize;
 
@@ -9,45 +9,41 @@ fn round2(v: f64) -> f64 {
 }
 
 fn timestamp_to_date(ts: f64) -> String {
-    let secs = ts as i64 / 1000;
-    let days_since_epoch = secs / 86400;
-    let mut year = 1970;
-    let mut remaining = days_since_epoch;
-    loop {
-        let year_days = if is_leap(year) { 366 } else { 365 };
-        if remaining < year_days {
-            break;
-        }
-        remaining -= year_days;
-        year += 1;
-    }
-    let month_days = if is_leap(year) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut month = 0;
-    for (i, &days) in month_days.iter().enumerate() {
-        if remaining < days {
-            month = i;
-            break;
-        }
-        remaining -= days;
-    }
-    let day = remaining + 1;
-    format!("{:04}-{:02}-{:02}", year, month + 1, day)
+    let days_since_epoch = (ts as i64 / 86400000) as i64;
+    let z = days_since_epoch + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{:04}-{:02}-{:02}", y, m, d)
 }
 
-fn is_leap(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
-}
-
-#[derive(Serialize)]
 struct MaEntry {
     date: String,
     price: f64,
-    #[serde(flatten)]
-    smas: HashMap<String, Option<f64>>,
+    sma_keys: Vec<String>,
+    sma_values: Vec<Option<f64>>,
+}
+
+impl Serialize for MaEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2 + self.sma_keys.len()))?;
+        map.serialize_entry("date", &self.date)?;
+        map.serialize_entry("price", &self.price)?;
+        for (k, v) in self.sma_keys.iter().zip(self.sma_values.iter()) {
+            map.serialize_entry(k, v)?;
+        }
+        map.end()
+    }
 }
 
 fn calculate_moving_averages(
@@ -59,6 +55,7 @@ fn calculate_moving_averages(
     let cutoff_index = 0usize.max(num_points.saturating_sub((cutoff_years as usize) * 365));
     let mut results = Vec::with_capacity(num_points - cutoff_index);
 
+    let sma_keys: Vec<String> = sma_windows.iter().map(|w| format!("sma_{}", w)).collect();
     let mut running_sums: Vec<f64> = vec![0.0; sma_windows.len()];
 
     for i in 0..num_points {
@@ -74,22 +71,23 @@ fn calculate_moving_averages(
 
         if i >= cutoff_index {
             let date = timestamp_to_date(prices[i * 2]);
-            let mut smas = HashMap::new();
-            for (wi, &w) in sma_windows.iter().enumerate() {
-                let w_usize = w as usize;
-                if i >= w_usize - 1 {
-                    smas.insert(
-                        format!("sma_{}", w),
-                        Some(round2(running_sums[wi] / w_usize as f64)),
-                    );
-                } else {
-                    smas.insert(format!("sma_{}", w), None);
-                }
-            }
+            let sma_values: Vec<Option<f64>> = sma_windows
+                .iter()
+                .enumerate()
+                .map(|(wi, &w)| {
+                    let w_usize = w as usize;
+                    if i >= w_usize - 1 {
+                        Some(round2(running_sums[wi] / w_usize as f64))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             results.push(MaEntry {
                 date,
                 price: round2(price),
-                smas,
+                sma_keys: sma_keys.clone(),
+                sma_values,
             });
         }
     }
@@ -163,18 +161,19 @@ fn calculate_rsi(prices: &[f64], period: u32, cutoff_years: u32) -> Vec<RsiEntry
 
 fn ema(values: &[f64], period: usize) -> Vec<f64> {
     let k = 2.0 / (period as f64 + 1.0);
-    let mut result = Vec::new();
 
     if values.len() < period {
-        return result;
+        return Vec::new();
     }
 
     let sum: f64 = values[..period].iter().sum();
-    result.push(sum / period as f64);
+    let mut prev = sum / period as f64;
+    let mut result = Vec::with_capacity(values.len() - period + 1);
+    result.push(prev);
 
     for i in period..values.len() {
-        let prev = result[result.len() - 1];
-        result.push(values[i] * k + prev * (1.0 - k));
+        prev = values[i] * k + prev * (1.0 - k);
+        result.push(prev);
     }
 
     result
@@ -392,23 +391,67 @@ fn calculate_summary(prices: &[f64]) -> Summary {
         (now_ms - ts) / 86_400_000
     };
 
-    let daily_returns: Vec<f64> = (1..num_points)
-        .map(|i| {
-            let prev = prices[(i - 1) * 2 + 1];
-            let curr = prices[i * 2 + 1];
-            ((curr - prev) / prev * 100.0).abs()
-        })
-        .collect();
+    let max_window = 365usize.min(num_points - 1);
+    let mut ring = vec![0.0f64; max_window];
+    let mut ring_pos = 0usize;
+    let mut ring_filled = 0usize;
+    let mut window_sums = [0.0f64; 4];
+    let window_sizes = [1usize, 7, 30, 365];
 
-    let avg_return = |window: usize| -> f64 {
-        if daily_returns.len() < window {
-            if daily_returns.is_empty() {
-                return 0.0;
+    for i in 1..num_points {
+        let prev = prices[(i - 1) * 2 + 1];
+        let curr = prices[i * 2 + 1];
+        let ret = ((curr - prev) / prev * 100.0).abs();
+
+        if ring_filled >= max_window {
+            let _old = ring[ring_pos];
+            for (wi, &ws) in window_sizes.iter().enumerate() {
+                if ring_filled >= ws {
+                    let old_idx = (ring_pos + max_window - ws) % max_window;
+                    window_sums[wi] -= ring[old_idx];
+                }
             }
-            return round2(daily_returns.iter().sum::<f64>() / daily_returns.len() as f64);
         }
-        let slice = &daily_returns[daily_returns.len() - window..];
-        round2(slice.iter().sum::<f64>() / slice.len() as f64)
+
+        ring[ring_pos] = ret;
+        for (wi, &_ws) in window_sizes.iter().enumerate() {
+            if ring_filled + 1 >= window_sizes[wi] {
+                window_sums[wi] += ret;
+            }
+        }
+
+        ring_pos = (ring_pos + 1) % max_window;
+        ring_filled = ring_filled + 1;
+
+        if ring_filled >= max_window {
+            break;
+        }
+    }
+
+    for i in (max_window + 1)..num_points {
+        let prev = prices[(i - 1) * 2 + 1];
+        let curr = prices[i * 2 + 1];
+        let ret = ((curr - prev) / prev * 100.0).abs();
+
+        for (wi, &ws) in window_sizes.iter().enumerate() {
+            let old_idx = (ring_pos + max_window - ws) % max_window;
+            window_sums[wi] -= ring[old_idx];
+        }
+
+        ring[ring_pos] = ret;
+        for (wi, &_ws) in window_sizes.iter().enumerate() {
+            window_sums[wi] += ret;
+        }
+
+        ring_pos = (ring_pos + 1) % max_window;
+    }
+
+    let avg_return = |wi: usize| -> f64 {
+        let ws = window_sizes[wi].min(ring_filled);
+        if ws == 0 {
+            return 0.0;
+        }
+        round2(window_sums[wi] / ws as f64)
     };
 
     Summary {
@@ -433,10 +476,10 @@ fn calculate_summary(prices: &[f64]) -> Summary {
             days_since: days_since(atl_idx),
         },
         volatility: Volatility {
-            daily_avg: avg_return(1),
-            weekly_avg: avg_return(7),
-            monthly_avg: avg_return(30),
-            yearly_avg: avg_return(365),
+            daily_avg: avg_return(0),
+            weekly_avg: avg_return(1),
+            monthly_avg: avg_return(2),
+            yearly_avg: avg_return(3),
         },
     }
 }
@@ -496,40 +539,17 @@ fn calculate_signals(
     macd: &[MacdEntry],
     bollinger_bands: &[BollingerEntry],
 ) -> Vec<SignalEntry> {
-    let mut ma_by_date: HashMap<&str, &MaEntry> = HashMap::new();
-    for entry in moving_averages {
-        ma_by_date.insert(&entry.date, entry);
-    }
+    let sma50_idx = moving_averages
+        .first()
+        .and_then(|e| e.sma_keys.iter().position(|k| k == "sma_50"));
+    let sma200_idx = moving_averages
+        .first()
+        .and_then(|e| e.sma_keys.iter().position(|k| k == "sma_200"));
 
-    let mut rsi_by_date: HashMap<&str, &RsiEntry> = HashMap::new();
-    for entry in rsi {
-        rsi_by_date.insert(&entry.date, entry);
-    }
-
-    let mut macd_by_date: HashMap<&str, &MacdEntry> = HashMap::new();
-    for entry in macd {
-        macd_by_date.insert(&entry.date, entry);
-    }
-
-    let mut bb_by_date: HashMap<&str, &BollingerEntry> = HashMap::new();
-    for entry in bollinger_bands {
-        bb_by_date.insert(&entry.date, entry);
-    }
-
-    let mut all_dates: Vec<&str> = Vec::new();
-    for d in ma_by_date.keys() {
-        all_dates.push(d);
-    }
-    for d in rsi_by_date.keys() {
-        all_dates.push(d);
-    }
-    for d in macd_by_date.keys() {
-        all_dates.push(d);
-    }
-    for d in bb_by_date.keys() {
-        all_dates.push(d);
-    }
-    all_dates.sort();
+    let mut ma_i = 0usize;
+    let mut rsi_i = 0usize;
+    let mut macd_i = 0usize;
+    let mut bb_i = 0usize;
 
     let mut prev_sma50: Option<f64> = None;
     let mut prev_sma200: Option<f64> = None;
@@ -537,38 +557,77 @@ fn calculate_signals(
     let mut squeeze_count: usize = 0;
     let mut results = Vec::new();
 
-    for date in &all_dates {
-        let ma = ma_by_date.get(date).copied();
-        let rsi_entry = rsi_by_date.get(date).copied();
-        let macd_entry = macd_by_date.get(date).copied();
-        let bb = bb_by_date.get(date).copied();
+    loop {
+        let ma_date = moving_averages.get(ma_i).map(|e| e.date.as_str());
+        let rsi_date = rsi.get(rsi_i).map(|e| e.date.as_str());
+        let macd_date = macd.get(macd_i).map(|e| e.date.as_str());
+        let bb_date = bollinger_bands.get(bb_i).map(|e| e.date.as_str());
+
+        let date = match [ma_date, rsi_date, macd_date, bb_date]
+            .iter()
+            .filter_map(|&d| d)
+            .min()
+        {
+            Some(d) => d,
+            None => break,
+        };
+
+        let ma = if ma_date == Some(date) {
+            let e = &moving_averages[ma_i];
+            ma_i += 1;
+            Some(e)
+        } else {
+            None
+        };
+        let rsi_entry = if rsi_date == Some(date) {
+            let e = &rsi[rsi_i];
+            rsi_i += 1;
+            Some(e)
+        } else {
+            None
+        };
+        let macd_entry = if macd_date == Some(date) {
+            let e = &macd[macd_i];
+            macd_i += 1;
+            Some(e)
+        } else {
+            None
+        };
+        let bb = if bb_date == Some(date) {
+            let e = &bollinger_bands[bb_i];
+            bb_i += 1;
+            Some(e)
+        } else {
+            None
+        };
 
         let ma_cross = if let Some(ma) = ma {
-            let sma50 = ma.smas.get("sma_50").and_then(|v| *v);
-            let sma200 = ma.smas.get("sma_200").and_then(|v| *v);
+            let sma50 = sma50_idx.and_then(|idx| ma.sma_values[idx]);
+            let sma200 = sma200_idx.and_then(|idx| ma.sma_values[idx]);
 
-            let cross = if let (Some(cur50), Some(cur200), Some(p50), Some(p200)) =
-                (sma50, sma200, prev_sma50, prev_sma200)
-            {
-                let was_above = p50 >= p200;
-                let is_above = cur50 >= cur200;
-                if was_above != is_above {
-                    Some(MaCross {
-                        r#type: if is_above {
-                            "golden_cross".to_string()
-                        } else {
-                            "death_cross".to_string()
-                        },
-                        fast_window: 50,
-                        slow_window: 200,
-                        strength: round2((cur50 - cur200).abs() / ma.price),
-                    })
+            let cross =
+                if let (Some(cur50), Some(cur200), Some(p50), Some(p200)) =
+                    (sma50, sma200, prev_sma50, prev_sma200)
+                {
+                    let was_above = p50 >= p200;
+                    let is_above = cur50 >= cur200;
+                    if was_above != is_above {
+                        Some(MaCross {
+                            r#type: if is_above {
+                                "golden_cross".to_string()
+                            } else {
+                                "death_cross".to_string()
+                            },
+                            fast_window: 50,
+                            slow_window: 200,
+                            strength: round2((cur50 - cur200).abs() / ma.price),
+                        })
+                    } else {
+                        None
+                    }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
+                };
 
             if sma50.is_some() {
                 prev_sma50 = sma50;
@@ -640,25 +699,22 @@ fn calculate_signals(
         };
 
         let mut score: f64 = 50.0;
-        if ma_cross.is_some() {
-            score += if ma_cross.as_ref().unwrap().r#type == "golden_cross" {
-                20.0
-            } else {
-                -20.0
+        if let Some(ref mc) = ma_cross {
+            score += match mc.r#type.as_str() {
+                "golden_cross" => 20.0,
+                _ => -20.0,
             };
         }
-        if rsi_divergence.is_some() {
-            score += if rsi_divergence.as_ref().unwrap().r#type == "oversold" {
-                10.0
-            } else {
-                -10.0
+        if let Some(ref rd) = rsi_divergence {
+            score += match rd.r#type.as_str() {
+                "oversold" => 10.0,
+                _ => -10.0,
             };
         }
-        if macd_crossover.is_some() {
-            score += if macd_crossover.as_ref().unwrap().direction == "bullish" {
-                15.0
-            } else {
-                -15.0
+        if let Some(ref mc) = macd_crossover {
+            score += match mc.direction.as_str() {
+                "bullish" => 15.0,
+                _ => -15.0,
             };
         }
         score = score.max(0.0).min(100.0);
@@ -752,14 +808,23 @@ pub fn calculate_macd_json(
 }
 
 #[napi]
-pub fn calculate_all(prices: Float64Array, sma_windows: Vec<u32>) -> String {
+pub fn calculate_all(env: Env, prices: Float64Array, sma_windows: Vec<u32>) -> napi::Result<Unknown<'static>> {
     let cutoff_years: u32 = 9;
 
-    let moving_averages = calculate_moving_averages(&prices, &sma_windows, cutoff_years);
-    let rsi = calculate_rsi(&prices, 14, cutoff_years);
-    let macd = calculate_macd(&prices, 12, 26, 9, cutoff_years);
-    let bollinger_bands = calculate_bollinger_bands(&prices, 20, cutoff_years);
-    let summary = calculate_summary(&prices);
+    let ((moving_averages, rsi), (macd, bollinger_bands, summary)) = rayon::join(
+        || {
+            let ma = calculate_moving_averages(&prices, &sma_windows, cutoff_years);
+            let rsi = calculate_rsi(&prices, 14, cutoff_years);
+            (ma, rsi)
+        },
+        || {
+            let macd = calculate_macd(&prices, 12, 26, 9, cutoff_years);
+            let bb = calculate_bollinger_bands(&prices, 20, cutoff_years);
+            let summary = calculate_summary(&prices);
+            (macd, bb, summary)
+        },
+    );
+
     let signals = calculate_signals(&moving_averages, &rsi, &macd, &bollinger_bands);
 
     let result = AllResult {
@@ -771,5 +836,5 @@ pub fn calculate_all(prices: Float64Array, sma_windows: Vec<u32>) -> String {
         signals,
     };
 
-    serde_json::to_string(&result).unwrap()
+    env.to_js_value(&result)
 }

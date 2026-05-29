@@ -5,9 +5,9 @@ import {
   calculateRSI,
   calculateMACD,
 } from "./indicators.js";
+import { run, bench, group } from "mitata";
 
 const require = createRequire(import.meta.url);
-const { Suite, jsonReport } = require("bench-node");
 const native = require("./napibench-native.node");
 
 function expandPrices(oneYearPrices, years = 10) {
@@ -19,6 +19,13 @@ function expandPrices(oneYearPrices, years = 10) {
     }
   }
   return prices;
+}
+
+function formatNs(ns) {
+  if (ns < 1_000) return `${ns.toFixed(2)} ns`;
+  if (ns < 1_000_000) return `${(ns / 1_000).toFixed(2)} µs`;
+  if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(2)} ms`;
+  return `${(ns / 1_000_000_000).toFixed(2)} s`;
 }
 
 function generateHtmlReport(allResults) {
@@ -41,7 +48,7 @@ function generateHtmlReport(allResults) {
               <span class="bar-value">${r.opsSec.toLocaleString()} ops/sec</span>
             </div>
           </div>
-          <div class="bar-details">min: ${r.min}, max: ${r.max}</div>
+          <div class="bar-details">avg: ${formatNs(r.avg)}, min: ${formatNs(r.min)}, max: ${formatNs(r.max)}</div>
         </div>`;
       })
       .join("");
@@ -99,21 +106,12 @@ function generateHtmlReport(allResults) {
     <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span> Native (Rust/N-API)</div>
   </div>
   ${suites}
-  <p class="footer">Generated with <a href="https://github.com/RafaelGSS/bench-node">bench-node</a></p>
+  <p class="footer">Generated with <a href="https://github.com/evanwashere/mitata">mitata</a></p>
 </body>
 </html>`;
 
   writeFileSync("reports/benchmark-functions.html", html);
   console.log("\nHTML report generated: reports/benchmark-functions.html");
-}
-
-function collectResults(suiteName) {
-  let collected = [];
-  const reporter = (results) => {
-    collected = results;
-    jsonReport(results);
-  };
-  return { reporter, getResults: () => ({ name: suiteName, results: collected }) };
 }
 
 const { prices: oneYearPrices } = JSON.parse(
@@ -131,39 +129,52 @@ for (let i = 0; i < prices.length; i++) {
 
 console.log(`Benchmarking with ${prices.length} price points (10 years)\n`);
 
-const collectors = [];
-
-const c1 = collectResults("Moving Averages");
-collectors.push(c1);
-await new Suite({ reporter: c1.reporter })
-  .add("JS - calculateMovingAverages", () => {
+group("Moving Averages", () => {
+  bench("JS - calculateMovingAverages", () => {
     calculateMovingAverages(prices, smaWindows);
-  })
-  .add("Native - calculateMovingAveragesJson", () => {
+  });
+  bench("Native - calculateMovingAveragesJson", () => {
     native.calculateMovingAveragesJson(flatPrices, smaWindows);
-  })
-  .run();
+  });
+});
 
-const c2 = collectResults("RSI");
-collectors.push(c2);
-await new Suite({ reporter: c2.reporter })
-  .add("JS - calculateRSI", () => {
+group("RSI", () => {
+  bench("JS - calculateRSI", () => {
     calculateRSI(prices, 14);
-  })
-  .add("Native - calculateRsiJson", () => {
+  });
+  bench("Native - calculateRsiJson", () => {
     native.calculateRsiJson(flatPrices, 14);
-  })
-  .run();
+  });
+});
 
-const c3 = collectResults("MACD");
-collectors.push(c3);
-await new Suite({ reporter: c3.reporter })
-  .add("JS - calculateMACD", () => {
+group("MACD", () => {
+  bench("JS - calculateMACD", () => {
     calculateMACD(prices, 12, 26, 9);
-  })
-  .add("Native - calculateMacdJson", () => {
+  });
+  bench("Native - calculateMacdJson", () => {
     native.calculateMacdJson(flatPrices, 12, 26, 9);
-  })
-  .run();
+  });
+});
 
-generateHtmlReport(collectors.map((c) => c.getResults()));
+const results = await run({ format: "json" });
+
+const groupsByName = {};
+for (const b of results.benchmarks) {
+  const groupName = results.layout[b.group]?.name || "Other";
+  if (!groupsByName[groupName]) groupsByName[groupName] = [];
+  const stats = b.runs[0].stats;
+  groupsByName[groupName].push({
+    name: b.alias,
+    opsSec: Math.round(1e9 / stats.avg),
+    avg: stats.avg,
+    min: stats.min,
+    max: stats.max,
+  });
+}
+
+const allResults = Object.entries(groupsByName).map(([name, results]) => ({
+  name,
+  results,
+}));
+
+generateHtmlReport(allResults);

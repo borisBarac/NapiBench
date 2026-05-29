@@ -70,7 +70,7 @@ export function createServer(port = APP_SERVER_PORT) {
         flatPrices[i * 2] = prices[i][0];
         flatPrices[i * 2 + 1] = prices[i][1];
       }
-      const rustResult = JSON.parse(native.calculateAll(flatPrices, [25, 50, 100, 200]));
+      const rustResult = native.calculateAll(flatPrices, [25, 50, 100, 200]);
 
       res.json({ data_points: prices.length, ...rustResult });
     } catch (err) {
