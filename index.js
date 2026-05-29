@@ -65,7 +65,12 @@ export function createServer(port = APP_SERVER_PORT) {
 
       const body = await apiRes.json();
       const prices = expandPrices(body.prices);
-      const rustResult = JSON.parse(native.calculateAll(prices, [25, 50, 100, 200]));
+      const flatPrices = new Float64Array(prices.length * 2);
+      for (let i = 0; i < prices.length; i++) {
+        flatPrices[i * 2] = prices[i][0];
+        flatPrices[i * 2 + 1] = prices[i][1];
+      }
+      const rustResult = JSON.parse(native.calculateAll(flatPrices, [25, 50, 100, 200]));
 
       res.json({ data_points: prices.length, ...rustResult });
     } catch (err) {

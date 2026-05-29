@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use napi::bindgen_prelude::Float64Array;
 use napi_derive::napi;
 use serde::Serialize;
 
@@ -50,33 +51,47 @@ struct MaEntry {
 }
 
 fn calculate_moving_averages(
-    prices: &[Vec<f64>],
+    prices: &[f64],
     sma_windows: &[u32],
     cutoff_years: u32,
 ) -> Vec<MaEntry> {
-    let cutoff_index = 0usize.max(prices.len().saturating_sub((cutoff_years as usize) * 365));
-    let mut results = Vec::with_capacity(prices.len() - cutoff_index);
+    let num_points = prices.len() / 2;
+    let cutoff_index = 0usize.max(num_points.saturating_sub((cutoff_years as usize) * 365));
+    let mut results = Vec::with_capacity(num_points - cutoff_index);
 
-    for i in cutoff_index..prices.len() {
-        let date = timestamp_to_date(prices[i][0]);
-        let price = round2(prices[i][1]);
-        let mut smas = HashMap::new();
-        for &w in sma_windows {
+    let mut running_sums: Vec<f64> = vec![0.0; sma_windows.len()];
+
+    for i in 0..num_points {
+        let price = prices[i * 2 + 1];
+
+        for (wi, &w) in sma_windows.iter().enumerate() {
             let w_usize = w as usize;
-            let start = i as isize - w_usize as isize + 1;
-            if start >= 0 {
-                let start = start as usize;
-                let sum: f64 = (start..=i).map(|j| prices[j][1]).sum();
-                smas.insert(format!("sma_{}", w), Some(round2(sum / w_usize as f64)));
-            } else {
-                smas.insert(format!("sma_{}", w), None);
+            running_sums[wi] += price;
+            if i >= w_usize {
+                running_sums[wi] -= prices[(i - w_usize) * 2 + 1];
             }
         }
-        results.push(MaEntry {
-            date,
-            price,
-            smas,
-        });
+
+        if i >= cutoff_index {
+            let date = timestamp_to_date(prices[i * 2]);
+            let mut smas = HashMap::new();
+            for (wi, &w) in sma_windows.iter().enumerate() {
+                let w_usize = w as usize;
+                if i >= w_usize - 1 {
+                    smas.insert(
+                        format!("sma_{}", w),
+                        Some(round2(running_sums[wi] / w_usize as f64)),
+                    );
+                } else {
+                    smas.insert(format!("sma_{}", w), None);
+                }
+            }
+            results.push(MaEntry {
+                date,
+                price: round2(price),
+                smas,
+            });
+        }
     }
 
     results
@@ -88,13 +103,14 @@ struct RsiEntry {
     rsi: f64,
 }
 
-fn calculate_rsi(prices: &[Vec<f64>], period: u32, cutoff_years: u32) -> Vec<RsiEntry> {
+fn calculate_rsi(prices: &[f64], period: u32, cutoff_years: u32) -> Vec<RsiEntry> {
     let period = period as usize;
-    let cutoff_index = 0usize.max(prices.len().saturating_sub((cutoff_years as usize) * 365));
+    let num_points = prices.len() / 2;
+    let cutoff_index = 0usize.max(num_points.saturating_sub((cutoff_years as usize) * 365));
     let start_index = 1usize.max(cutoff_index);
 
-    let changes: Vec<f64> = (1..prices.len())
-        .map(|i| prices[i][1] - prices[i - 1][1])
+    let changes: Vec<f64> = (1..num_points)
+        .map(|i| prices[i * 2 + 1] - prices[(i - 1) * 2 + 1])
         .collect();
 
     let mut avg_gain = 0.0_f64;
@@ -118,7 +134,7 @@ fn calculate_rsi(prices: &[Vec<f64>], period: u32, cutoff_years: u32) -> Vec<Rsi
 
     let mut results = Vec::new();
 
-    for i in start_index..prices.len() {
+    for i in start_index..num_points {
         let change_idx = i - 1;
         if change_idx >= first_change_idx + period && change_idx < changes.len() {
             let change = changes[change_idx];
@@ -136,7 +152,7 @@ fn calculate_rsi(prices: &[Vec<f64>], period: u32, cutoff_years: u32) -> Vec<Rsi
             };
             let rsi = round2(100.0 - 100.0 / (1.0 + rs));
             results.push(RsiEntry {
-                date: timestamp_to_date(prices[i][0]),
+                date: timestamp_to_date(prices[i * 2]),
                 rsi,
             });
         }
@@ -173,7 +189,7 @@ struct MacdEntry {
 }
 
 fn calculate_macd(
-    prices: &[Vec<f64>],
+    prices: &[f64],
     fast: u32,
     slow: u32,
     signal: u32,
@@ -182,8 +198,9 @@ fn calculate_macd(
     let fast = fast as usize;
     let slow = slow as usize;
     let signal = signal as usize;
+    let num_points = prices.len() / 2;
 
-    let close_prices: Vec<f64> = prices.iter().map(|p| p[1]).collect();
+    let close_prices: Vec<f64> = (0..num_points).map(|i| prices[i * 2 + 1]).collect();
 
     let fast_ema = ema(&close_prices, fast);
     let slow_ema = ema(&close_prices, slow);
@@ -198,17 +215,17 @@ fn calculate_macd(
 
     let signal_line = ema(&macd_line, signal);
 
-    let cutoff_index = 0usize.max(prices.len().saturating_sub((cutoff_years as usize) * 365));
+    let cutoff_index = 0usize.max(num_points.saturating_sub((cutoff_years as usize) * 365));
     let mut results = Vec::new();
 
     let macd_start_in_prices = (fast as isize - 1) as usize;
 
     for i in 0..signal_line.len() {
         let price_idx = macd_start_in_prices + signal - 1 + i;
-        if price_idx >= cutoff_index && price_idx < prices.len() {
+        if price_idx >= cutoff_index && price_idx < num_points {
             let macd_val = macd_line[macd_line.len() - signal_line.len() + i];
             results.push(MacdEntry {
-                date: timestamp_to_date(prices[price_idx][0]),
+                date: timestamp_to_date(prices[price_idx * 2]),
                 macd: round2(macd_val),
                 signal: round2(signal_line[i]),
                 histogram: round2(macd_val - signal_line[i]),
@@ -230,54 +247,57 @@ struct BollingerEntry {
 }
 
 fn calculate_bollinger_bands(
-    prices: &[Vec<f64>],
+    prices: &[f64],
     period: u32,
     cutoff_years: u32,
 ) -> Vec<BollingerEntry> {
     let period = period as usize;
-    let cutoff_index = 0usize.max(prices.len().saturating_sub((cutoff_years as usize) * 365));
+    let num_points = prices.len() / 2;
+    let cutoff_index = 0usize.max(num_points.saturating_sub((cutoff_years as usize) * 365));
     let mut results = Vec::new();
 
-    for i in cutoff_index..prices.len() {
-        let start = i as isize - period as isize + 1;
-        if start < 0 {
-            continue;
+    let mut sum = 0.0_f64;
+    let mut sum_sq = 0.0_f64;
+
+    for i in 0..num_points {
+        let price = prices[i * 2 + 1];
+        sum += price;
+        sum_sq += price * price;
+
+        if i >= period {
+            let old_price = prices[(i - period) * 2 + 1];
+            sum -= old_price;
+            sum_sq -= old_price * old_price;
         }
-        let start = start as usize;
 
-        let sum: f64 = (start..=i).map(|j| prices[j][1]).sum();
-        let middle = sum / period as f64;
+        if i >= period - 1 && i >= cutoff_index {
+            let n = period as f64;
+            let mean = sum / n;
+            let variance = (sum_sq / n - mean * mean).max(0.0);
+            let stddev = variance.sqrt();
 
-        let variance: f64 = (start..=i)
-            .map(|j| {
-                let diff = prices[j][1] - middle;
-                diff * diff
-            })
-            .sum();
-        let stddev = (variance / period as f64).sqrt();
+            let upper = mean + 2.0 * stddev;
+            let lower = mean - 2.0 * stddev;
+            let bandwidth = if mean != 0.0 {
+                round2((upper - lower) / mean * 100.0)
+            } else {
+                0.0
+            };
+            let percent_b = if upper != lower {
+                round2((price - lower) / (upper - lower))
+            } else {
+                0.5
+            };
 
-        let upper = middle + 2.0 * stddev;
-        let lower = middle - 2.0 * stddev;
-        let price = prices[i][1];
-        let bandwidth = if middle != 0.0 {
-            round2((upper - lower) / middle * 100.0)
-        } else {
-            0.0
-        };
-        let percent_b = if upper != lower {
-            round2((price - lower) / (upper - lower))
-        } else {
-            0.5
-        };
-
-        results.push(BollingerEntry {
-            date: timestamp_to_date(prices[i][0]),
-            upper: round2(upper),
-            middle: round2(middle),
-            lower: round2(lower),
-            bandwidth,
-            percent_b,
-        });
+            results.push(BollingerEntry {
+                date: timestamp_to_date(prices[i * 2]),
+                upper: round2(upper),
+                middle: round2(mean),
+                lower: round2(lower),
+                bandwidth,
+                percent_b,
+            });
+        }
     }
 
     results
@@ -324,23 +344,24 @@ struct Summary {
     volatility: Volatility,
 }
 
-fn calculate_summary(prices: &[Vec<f64>]) -> Summary {
+fn calculate_summary(prices: &[f64]) -> Summary {
+    let num_points = prices.len() / 2;
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64;
 
-    let latest_price = round2(prices[prices.len() - 1][1]);
+    let latest_price = round2(prices[(num_points - 1) * 2 + 1]);
 
     let price_change = |days: usize| -> PriceChange {
-        if prices.len() <= days {
+        if num_points <= days {
             return PriceChange {
                 absolute: 0.0,
                 percent: 0.0,
             };
         }
-        let idx = prices.len() - 1 - days;
-        let old_price = prices[idx][1];
+        let idx = num_points - 1 - days;
+        let old_price = prices[idx * 2 + 1];
         let abs = round2(latest_price - old_price);
         let pct = round2(((latest_price - old_price) / old_price) * 100.0);
         PriceChange {
@@ -354,24 +375,29 @@ fn calculate_summary(prices: &[Vec<f64>]) -> Summary {
     let mut atl_price = f64::INFINITY;
     let mut atl_idx = 0usize;
 
-    for i in 0..prices.len() {
-        if prices[i][1] > ath_price {
-            ath_price = prices[i][1];
+    for i in 0..num_points {
+        let p = prices[i * 2 + 1];
+        if p > ath_price {
+            ath_price = p;
             ath_idx = i;
         }
-        if prices[i][1] < atl_price {
-            atl_price = prices[i][1];
+        if p < atl_price {
+            atl_price = p;
             atl_idx = i;
         }
     }
 
     let days_since = |idx: usize| -> i64 {
-        let ts = prices[idx][0] as i64;
+        let ts = prices[idx * 2] as i64;
         (now_ms - ts) / 86_400_000
     };
 
-    let daily_returns: Vec<f64> = (1..prices.len())
-        .map(|i| ((prices[i][1] - prices[i - 1][1]) / prices[i - 1][1] * 100.0).abs())
+    let daily_returns: Vec<f64> = (1..num_points)
+        .map(|i| {
+            let prev = prices[(i - 1) * 2 + 1];
+            let curr = prices[i * 2 + 1];
+            ((curr - prev) / prev * 100.0).abs()
+        })
         .collect();
 
     let avg_return = |window: usize| -> f64 {
@@ -389,8 +415,8 @@ fn calculate_summary(prices: &[Vec<f64>]) -> Summary {
         symbol: "BTC".to_string(),
         currency: "USD".to_string(),
         date_range: DateRange {
-            from: timestamp_to_date(prices[0][0]),
-            to: timestamp_to_date(prices[prices.len() - 1][0]),
+            from: timestamp_to_date(prices[0]),
+            to: timestamp_to_date(prices[(num_points - 1) * 2]),
         },
         latest_price,
         price_change_24h: price_change(1),
@@ -398,12 +424,12 @@ fn calculate_summary(prices: &[Vec<f64>]) -> Summary {
         price_change_30d: price_change(30),
         all_time_high: AllTimeExtreme {
             price: round2(ath_price),
-            date: timestamp_to_date(prices[ath_idx][0]),
+            date: timestamp_to_date(prices[ath_idx * 2]),
             days_since: days_since(ath_idx),
         },
         all_time_low: AllTimeExtreme {
             price: round2(atl_price),
-            date: timestamp_to_date(prices[atl_idx][0]),
+            date: timestamp_to_date(prices[atl_idx * 2]),
             days_since: days_since(atl_idx),
         },
         volatility: Volatility {
@@ -688,7 +714,7 @@ struct AllResult {
 
 #[napi]
 pub fn calculate_moving_averages_json(
-    prices: Vec<Vec<f64>>,
+    prices: Float64Array,
     sma_windows: Vec<u32>,
     cutoff_years: Option<u32>,
 ) -> String {
@@ -699,7 +725,7 @@ pub fn calculate_moving_averages_json(
 
 #[napi]
 pub fn calculate_rsi_json(
-    prices: Vec<Vec<f64>>,
+    prices: Float64Array,
     period: Option<u32>,
     cutoff_years: Option<u32>,
 ) -> String {
@@ -711,7 +737,7 @@ pub fn calculate_rsi_json(
 
 #[napi]
 pub fn calculate_macd_json(
-    prices: Vec<Vec<f64>>,
+    prices: Float64Array,
     fast: Option<u32>,
     slow: Option<u32>,
     signal: Option<u32>,
@@ -726,7 +752,7 @@ pub fn calculate_macd_json(
 }
 
 #[napi]
-pub fn calculate_all(prices: Vec<Vec<f64>>, sma_windows: Vec<u32>) -> String {
+pub fn calculate_all(prices: Float64Array, sma_windows: Vec<u32>) -> String {
     let cutoff_years: u32 = 9;
 
     let moving_averages = calculate_moving_averages(&prices, &sma_windows, cutoff_years);

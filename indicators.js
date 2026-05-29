@@ -1,22 +1,27 @@
 export function calculateMovingAverages(prices, smaWindows, cutoffYears = 9) {
   const cutoffIndex = Math.max(0, prices.length - cutoffYears * 365);
   const movingAverages = [];
+  const runningSums = new Array(smaWindows.length).fill(0);
 
-  for (let i = cutoffIndex; i < prices.length; i++) {
+  for (let i = 0; i < prices.length; i++) {
+    const price = prices[i][1];
+
+    for (let wi = 0; wi < smaWindows.length; wi++) {
+      const w = smaWindows[wi];
+      runningSums[wi] += price;
+      if (i >= w) runningSums[wi] -= prices[i - w][1];
+    }
+
+    if (i < cutoffIndex) continue;
+
     const entry = {
       date: new Date(prices[i][0]).toISOString().split("T")[0],
-      price: Math.round(prices[i][1] * 100) / 100,
+      price: Math.round(price * 100) / 100,
     };
 
-    for (const w of smaWindows) {
-      const start = i - w + 1;
-      if (start >= 0) {
-        let sum = 0;
-        for (let j = start; j <= i; j++) sum += prices[j][1];
-        entry[`sma_${w}`] = Math.round((sum / w) * 100) / 100;
-      } else {
-        entry[`sma_${w}`] = null;
-      }
+    for (let wi = 0; wi < smaWindows.length; wi++) {
+      const w = smaWindows[wi];
+      entry[`sma_${w}`] = i >= w - 1 ? Math.round((runningSums[wi] / w) * 100) / 100 : null;
     }
 
     movingAverages.push(entry);
@@ -78,36 +83,39 @@ export function calculateRSI(prices, period = 14, cutoffYears = 9) {
 export function calculateBollingerBands(prices, period = 20, cutoffYears = 9) {
   const cutoffIndex = Math.max(0, prices.length - cutoffYears * 365);
   const results = [];
+  let sum = 0;
+  let sumSq = 0;
 
-  for (let i = cutoffIndex; i < prices.length; i++) {
-    const start = i - period + 1;
-    if (start < 0) continue;
-
-    let sum = 0;
-    for (let j = start; j <= i; j++) sum += prices[j][1];
-    const middle = sum / period;
-
-    let variance = 0;
-    for (let j = start; j <= i; j++) {
-      const diff = prices[j][1] - middle;
-      variance += diff * diff;
-    }
-    const stddev = Math.sqrt(variance / period);
-
-    const upper = middle + 2 * stddev;
-    const lower = middle - 2 * stddev;
+  for (let i = 0; i < prices.length; i++) {
     const price = prices[i][1];
-    const bandwidth = middle !== 0 ? round2((upper - lower) / middle * 100) : 0;
-    const percentB = upper !== lower ? round2((price - lower) / (upper - lower)) : 0.5;
+    sum += price;
+    sumSq += price * price;
 
-    results.push({
-      date: new Date(prices[i][0]).toISOString().split("T")[0],
-      upper: round2(upper),
-      middle: round2(middle),
-      lower: round2(lower),
-      bandwidth,
-      percent_b: percentB,
-    });
+    if (i >= period) {
+      const oldPrice = prices[i - period][1];
+      sum -= oldPrice;
+      sumSq -= oldPrice * oldPrice;
+    }
+
+    if (i >= period - 1 && i >= cutoffIndex) {
+      const mean = sum / period;
+      const variance = sumSq / period - mean * mean;
+      const stddev = Math.sqrt(Math.max(0, variance));
+
+      const upper = mean + 2 * stddev;
+      const lower = mean - 2 * stddev;
+      const bandwidth = mean !== 0 ? round2((upper - lower) / mean * 100) : 0;
+      const percentB = upper !== lower ? round2((price - lower) / (upper - lower)) : 0.5;
+
+      results.push({
+        date: new Date(prices[i][0]).toISOString().split("T")[0],
+        upper: round2(upper),
+        middle: round2(mean),
+        lower: round2(lower),
+        bandwidth,
+        percent_b: percentB,
+      });
+    }
   }
 
   return results;
