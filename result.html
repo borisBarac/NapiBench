@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NapiBench - JS vs Native</title>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b; --border: #e2e8f0; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --border: #334155; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 2rem; }
+  h1 { text-align: center; margin-bottom: 0.5rem; }
+  .subtitle { text-align: center; color: var(--muted); margin-bottom: 2rem; }
+  .legend { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 2rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; }
+  .legend-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .suite { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; max-width: 800px; margin-left: auto; margin-right: auto; }
+  .suite h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+  .bar-row { margin-bottom: 0.75rem; }
+  .bar-label { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
+  .badge { color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .bar-name { font-size: 0.85rem; color: var(--muted); }
+  .bar-track { background: var(--border); border-radius: 6px; height: 32px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; min-width: 0; transition: width 0.6s ease; }
+  .bar-value { color: #fff; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+  .bar-details { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .winner { margin-top: 0.75rem; font-size: 0.9rem; color: var(--muted); }
+  .winner strong { color: var(--text); }
+  .footer { text-align: center; margin-top: 2rem; font-size: 0.8rem; color: var(--muted); }
+  .footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>NapiBench</h1>
+  <p class="subtitle">JavaScript vs Native (Rust/N-API) Performance Comparison</p>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span> JavaScript</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span> Native (Rust/N-API)</div>
+  </div>
+  
+    <div class="suite">
+      <h2>Moving Averages</h2>
+      
+        <div class="bar-row">
+          <div class="bar-label">
+            <span class="badge" style="background:#3b82f6">JavaScript</span>
+            <span class="bar-name">JS - calculateMovingAverages</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:72.2%;background:#3b82f6">
+              <span class="bar-value">17,218.086 ops/sec</span>
+            </div>
+          </div>
+          <div class="bar-details">min: undefined, max: undefined</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">
+            <span class="badge" style="background:#f97316">Native (Rust/N-API)</span>
+            <span class="bar-name">Native - calculateMovingAveragesJson</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:100.0%;background:#f97316">
+              <span class="bar-value">23,856.038 ops/sec</span>
+            </div>
+          </div>
+          <div class="bar-details">min: undefined, max: undefined</div>
+        </div>
+      <p class="winner">Native is <strong>1.39x</strong> faster</p>
+    </div>
+    <div class="suite">
+      <h2>RSI</h2>
+      
+        <div class="bar-row">
+          <div class="bar-label">
+            <span class="badge" style="background:#3b82f6">JavaScript</span>
+            <span class="bar-name">JS - calculateRSI</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:29.7%;background:#3b82f6">
+              <span class="bar-value">27,358.338 ops/sec</span>
+            </div>
+          </div>
+          <div class="bar-details">min: undefined, max: undefined</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">
+            <span class="badge" style="background:#f97316">Native (Rust/N-API)</span>
+            <span class="bar-name">Native - calculateRsiJson</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:100.0%;background:#f97316">
+              <span class="bar-value">92,066.066 ops/sec</span>
+            </div>
+          </div>
+          <div class="bar-details">min: undefined, max: undefined</div>
+        </div>
+      <p class="winner">Native is <strong>3.37x</strong> faster</p>
+    </div>
+    <div class="suite">
+      <h2>MACD</h2>
+      
+        <div class="bar-row">
+          <div class="bar-label">
+            <span class="badge" style="background:#3b82f6">JavaScript</span>
+            <span class="bar-name">JS - calculateMACD</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:47.0%;background:#3b82f6">
+              <span class="bar-value">63,274.618 ops/sec</span>
+            </div>
+          </div>
+          <div class="bar-details">min: undefined, max: undefined</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">
+            <span class="badge" style="background:#f97316">Native (Rust/N-API)</span>
+            <span class="bar-name">Native - calculateMacdJson</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:100.0%;background:#f97316">
+              <span class="bar-value">134,553.327 ops/sec</span>
+            </div>
+          </div>
+          <div class="bar-details">min: undefined, max: undefined</div>
+        </div>
+      <p class="winner">Native is <strong>2.13x</strong> faster</p>
+    </div>
+  <p class="footer">Generated with <a href="https://github.com/RafaelGSS/bench-node">bench-node</a></p>
+</body>
+</html>
