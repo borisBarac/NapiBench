@@ -1,7 +1,8 @@
 import data from "./prices.json";
+import { PRICE_SERVER_PORT } from "./ports.config.js";
 
 Bun.serve({
-  port: 3022,
+  port: PRICE_SERVER_PORT,
   fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === "/prices") return Response.json(data);
@@ -9,4 +10,4 @@ Bun.serve({
   },
 });
 
-console.log("Fake BTC price server running on http://localhost:3022");
+console.log(`Fake BTC price server running on http://localhost:${PRICE_SERVER_PORT}`);

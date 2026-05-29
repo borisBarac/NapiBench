@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import express from "express";
 import { calculateMovingAverages, calculateRSI, calculateMACD } from "./indicators.js";
+import { PRICE_SERVER_PORT, APP_SERVER_PORT } from "./ports.config.js";
 
 const require = createRequire(import.meta.url);
 const native = require("./napibench-native.node");
@@ -22,12 +23,12 @@ export function expandPrices(oneYearPrices, years = 10) {
   return prices;
 }
 
-export function createServer(port = 3000) {
+export function createServer(port = APP_SERVER_PORT) {
   const app = express();
 
   app.get("/price", async (req, res) => {
     try {
-      const apiRes = await fetch("http://localhost:3022/prices");
+      const apiRes = await fetch(`http://localhost:${PRICE_SERVER_PORT}/prices`);
 
       if (!apiRes.ok) {
         return res.status(503).json({
@@ -50,7 +51,7 @@ export function createServer(port = 3000) {
 
   app.get("/price-rust", async (req, res) => {
     try {
-      const apiRes = await fetch("http://localhost:3022/prices");
+      const apiRes = await fetch(`http://localhost:${PRICE_SERVER_PORT}/prices`);
 
       if (!apiRes.ok) {
         return res.status(503).json({
@@ -78,4 +79,4 @@ export function createServer(port = 3000) {
   return server;
 };
 
-createServer(parseInt(process.env.PORT || "3000", 10));
+createServer(parseInt(process.env.PORT || String(APP_SERVER_PORT), 10));
