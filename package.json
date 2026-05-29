@@ -1,0 +1,25 @@
+{
+  "name": "napibench",
+  "module": "index.js",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.0",
+    "@types/bun": "latest",
+    "vitest": "^4.1.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "build:native": "napi build --release --manifest-path rust-addon/Cargo.toml --package-json-path package.json --output-dir .",
+    "build:native:debug": "napi build --manifest-path rust-addon/Cargo.toml --package-json-path package.json --output-dir ."
+  },
+  "napi": {
+    "binaryName": "napibench-native"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
