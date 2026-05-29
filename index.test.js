@@ -28,5 +28,19 @@ test("GET /price returns moving averages and measures time", async () => {
   console.log(`Data points: ${body.data_points}`);
   console.log(`Moving average entries: ${body.moving_averages.length}`);
 
+  expect(body.summary).toBeDefined();
+  expect(body.summary.symbol).toBe("BTC");
+  expect(body.summary.date_range.from).toBeDefined();
+  expect(body.summary.volatility).toBeDefined();
+
+  expect(Array.isArray(body.bollinger_bands)).toBe(true);
+  expect(body.bollinger_bands.length).toBeGreaterThan(0);
+
+  expect(Array.isArray(body.signals)).toBe(true);
+  expect(body.signals.length).toBeGreaterThan(0);
+  expect(body.signals[0].indicators).toBeDefined();
+  expect(body.signals[0].composite_score).toBeDefined();
+  expect(["buy", "sell", "hold"]).toContain(body.signals[0].recommendation);
+
   server.close();
 });

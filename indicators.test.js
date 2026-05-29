@@ -3,6 +3,9 @@ import {
   calculateMovingAverages,
   calculateRSI,
   calculateMACD,
+  calculateBollingerBands,
+  calculateSummary,
+  calculateSignals,
 } from "./indicators.js";
 
 function makePrices(values) {
@@ -149,4 +152,104 @@ test("calculateMACD respects cutoffYears", () => {
   const result = calculateMACD(prices, 12, 26, 9, 1);
 
   expect(result.length).toBeLessThanOrEqual(365);
+});
+
+test("calculateBollingerBands returns correct band structure", () => {
+  const prices = makePrices(Array.from({ length: 30 }, (_, i) => 100 + i));
+  const result = calculateBollingerBands(prices, 20, 1);
+
+  expect(result.length).toBeGreaterThan(0);
+  for (const entry of result) {
+    expect(entry.upper).toBeGreaterThan(entry.middle);
+    expect(entry.middle).toBeGreaterThan(entry.lower);
+    expect(entry.bandwidth).toBeGreaterThan(0);
+    expect(entry.percent_b).toBeGreaterThanOrEqual(0);
+    expect(entry.percent_b).toBeLessThanOrEqual(1);
+    expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  }
+});
+
+test("calculateBollingerBands skips entries with insufficient data", () => {
+  const prices = makePrices([100, 101, 102, 103, 104]);
+  const result = calculateBollingerBands(prices, 20, 1);
+  expect(result).toHaveLength(0);
+});
+
+test("calculateBollingerBands respects cutoffYears", () => {
+  const prices = makePrices(Array.from({ length: 800 }, (_, i) => 100 + i));
+  const result = calculateBollingerBands(prices, 20, 1);
+  expect(result.length).toBeLessThanOrEqual(365);
+});
+
+test("calculateSummary returns all nested fields", () => {
+  const prices = makePrices(Array.from({ length: 100 }, (_, i) => 100 + i));
+  const result = calculateSummary(prices);
+
+  expect(result.symbol).toBe("BTC");
+  expect(result.currency).toBe("USD");
+  expect(result.date_range.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(result.date_range.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(typeof result.latest_price).toBe("number");
+  expect(typeof result.price_change_24h.absolute).toBe("number");
+  expect(typeof result.price_change_24h.percent).toBe("number");
+  expect(typeof result.price_change_7d.absolute).toBe("number");
+  expect(typeof result.price_change_7d.percent).toBe("number");
+  expect(typeof result.price_change_30d.absolute).toBe("number");
+  expect(typeof result.price_change_30d.percent).toBe("number");
+  expect(result.all_time_high.price).toBeGreaterThan(0);
+  expect(result.all_time_high.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(typeof result.all_time_high.days_since).toBe("number");
+  expect(result.all_time_low.price).toBeGreaterThan(0);
+  expect(result.all_time_low.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(typeof result.all_time_low.days_since).toBe("number");
+  expect(typeof result.volatility.daily_avg).toBe("number");
+  expect(typeof result.volatility.weekly_avg).toBe("number");
+  expect(typeof result.volatility.monthly_avg).toBe("number");
+  expect(typeof result.volatility.yearly_avg).toBe("number");
+});
+
+test("calculateSummary finds correct ATH and ATL", () => {
+  const prices = makePrices([200, 50, 300, 10, 150]);
+  const result = calculateSummary(prices);
+  expect(result.all_time_high.price).toBe(300);
+  expect(result.all_time_low.price).toBe(10);
+});
+
+test("calculateSignals returns correct nested structure", () => {
+  const prices = makePrices(Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i) * 10));
+  const ma = calculateMovingAverages(prices, [25, 50, 100, 200], 1);
+  const rsi = calculateRSI(prices, 14, 1);
+  const macd = calculateMACD(prices, 12, 26, 9, 1);
+  const bb = calculateBollingerBands(prices, 20, 1);
+  const result = calculateSignals(prices, ma, rsi, macd, bb);
+
+  expect(result.length).toBeGreaterThan(0);
+  for (const entry of result) {
+    expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(entry.indicators).toHaveProperty("ma_cross");
+    expect(entry.indicators).toHaveProperty("rsi_divergence");
+    expect(entry.indicators).toHaveProperty("macd_crossover");
+    expect(entry.indicators).toHaveProperty("bollinger_squeeze");
+    expect(entry.composite_score.value).toBeGreaterThanOrEqual(0);
+    expect(entry.composite_score.value).toBeLessThanOrEqual(100);
+    expect(["bullish", "bearish", "neutral"]).toContain(entry.composite_score.label);
+    expect(entry.composite_score.confidence).toBeGreaterThanOrEqual(0);
+    expect(["buy", "sell", "hold"]).toContain(entry.recommendation);
+  }
+});
+
+test("calculateSignals handles null optional fields", () => {
+  const prices = makePrices(Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i) * 10));
+  const ma = calculateMovingAverages(prices, [25, 50, 100, 200], 1);
+  const rsi = calculateRSI(prices, 14, 1);
+  const macd = calculateMACD(prices, 12, 26, 9, 1);
+  const bb = calculateBollingerBands(prices, 20, 1);
+  const result = calculateSignals(prices, ma, rsi, macd, bb);
+
+  const hasNullMaCross = result.some((e) => e.indicators.ma_cross === null);
+  const hasNullRsi = result.some((e) => e.indicators.rsi_divergence === null);
+  const hasNullMacd = result.some((e) => e.indicators.macd_crossover === null);
+  expect(hasNullMaCross).toBe(true);
+  expect(hasNullRsi).toBe(true);
+  expect(hasNullMacd).toBe(true);
 });

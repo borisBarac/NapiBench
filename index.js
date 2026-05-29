@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import express from "express";
-import { calculateMovingAverages, calculateRSI, calculateMACD } from "./indicators.js";
+import { calculateMovingAverages, calculateRSI, calculateMACD, calculateBollingerBands, calculateSummary, calculateSignals } from "./indicators.js";
 import { PRICE_SERVER_PORT, APP_SERVER_PORT } from "./ports.config.js";
 
 const require = createRequire(import.meta.url);
@@ -42,8 +42,11 @@ export function createServer(port = APP_SERVER_PORT) {
       const movingAverages = calculateMovingAverages(prices, [25, 50, 100, 200]);
       const rsi = calculateRSI(prices);
       const macd = calculateMACD(prices);
+      const bollingerBands = calculateBollingerBands(prices);
+      const summary = calculateSummary(prices);
+      const signals = calculateSignals(prices, movingAverages, rsi, macd, bollingerBands);
 
-      res.json({ data_points: prices.length, moving_averages: movingAverages, rsi, macd });
+      res.json({ data_points: prices.length, summary, moving_averages: movingAverages, rsi, macd, bollinger_bands: bollingerBands, signals });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -62,11 +65,9 @@ export function createServer(port = APP_SERVER_PORT) {
 
       const body = await apiRes.json();
       const prices = expandPrices(body.prices);
-      const movingAverages = native.calculateMovingAverages(prices, [25, 50, 100, 200]);
-      const rsi = native.calculateRsi(prices);
-      const macd = native.calculateMacd(prices);
+      const rustResult = JSON.parse(native.calculateAll(prices, [25, 50, 100, 200]));
 
-      res.json({ data_points: prices.length, moving_averages: movingAverages, rsi, macd });
+      res.json({ data_points: prices.length, ...rustResult });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
