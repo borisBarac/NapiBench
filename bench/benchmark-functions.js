@@ -154,7 +154,7 @@ group("Full Pipeline", () => {
     const signals = calculateSignals(p, ma, rsi, macd, bb);
   });
   bench("Native - calculateAllFromRaw", () => {
-    native.calculateAllFromRaw(oneYearFlat, 10, smaWindows);
+    JSON.parse(native.calculateAllFromRaw(oneYearFlat, 10, smaWindows));
   });
 });
 

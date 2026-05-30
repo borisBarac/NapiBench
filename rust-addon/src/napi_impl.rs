@@ -1,6 +1,4 @@
 use napi::bindgen_prelude::Float64Array;
-use napi::bindgen_prelude::Unknown;
-use napi::Env;
 use napi_derive::napi;
 use serde::Serialize;
 
@@ -111,23 +109,21 @@ pub fn expand_prices_flat(one_year_prices: Float64Array, years: Option<u32>) -> 
 
 #[napi]
 pub fn calculate_all(
-    env: Env,
     prices: Float64Array,
     sma_windows: Vec<u32>,
-) -> napi::Result<Unknown<'static>> {
+) -> String {
     let result = do_calculate_all(&prices, &sma_windows);
-    env.to_js_value(&result)
+    serde_json::to_string(&result).unwrap()
 }
 
 #[napi]
 pub fn calculate_all_from_raw(
-    env: Env,
     one_year_prices: Float64Array,
     years: Option<u32>,
     sma_windows: Vec<u32>,
-) -> napi::Result<Unknown<'static>> {
+) -> String {
     let years = years.unwrap_or(10) as usize;
     let prices = expand_prices(&one_year_prices, years);
     let result = do_calculate_all(&prices, &sma_windows);
-    env.to_js_value(&result)
+    serde_json::to_string(&result).unwrap()
 }
