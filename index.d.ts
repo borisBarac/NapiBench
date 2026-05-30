@@ -4,6 +4,8 @@ export declare function calculateAll(prices: Float64Array, smaWindows: Array<num
 
 export declare function calculateAllFromRaw(oneYearPrices: Float64Array, years: number | undefined | null, smaWindows: Array<number>): string
 
+export declare function calculateAllFromRawHttp(oneYearPrices: Float64Array, dataPoints: number, years: number | undefined | null, smaWindows: Array<number>): Buffer
+
 export declare function calculateMacdJson(prices: Float64Array, fast?: number | undefined | null, slow?: number | undefined | null, signal?: number | undefined | null, cutoffYears?: number | undefined | null): string
 
 export declare function calculateMovingAveragesJson(prices: Float64Array, smaWindows: Array<number>, cutoffYears?: number | undefined | null): string

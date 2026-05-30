@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::utils::{round2, timestamp_to_date};
+use crate::utils::round2;
 
 #[cfg(not(feature = "wasm"))]
 fn now_ms() -> i64 {
@@ -56,7 +56,7 @@ pub struct Summary {
     pub volatility: Volatility,
 }
 
-pub fn calculate_summary(prices: &[f64]) -> Summary {
+pub fn calculate_summary(prices: &[f64], dates: &[String]) -> Summary {
     let num_points = prices.len() / 2;
     let now_ms = now_ms();
 
@@ -168,8 +168,8 @@ pub fn calculate_summary(prices: &[f64]) -> Summary {
         symbol: "BTC".to_string(),
         currency: "USD".to_string(),
         date_range: DateRange {
-            from: timestamp_to_date(prices[0]),
-            to: timestamp_to_date(prices[(num_points - 1) * 2]),
+            from: dates[0].clone(),
+            to: dates[num_points - 1].clone(),
         },
         latest_price,
         price_change_24h: price_change(1),
@@ -177,12 +177,12 @@ pub fn calculate_summary(prices: &[f64]) -> Summary {
         price_change_30d: price_change(30),
         all_time_high: AllTimeExtreme {
             price: round2(ath_price),
-            date: timestamp_to_date(prices[ath_idx * 2]),
+            date: dates[ath_idx].clone(),
             days_since: days_since(ath_idx),
         },
         all_time_low: AllTimeExtreme {
             price: round2(atl_price),
-            date: timestamp_to_date(prices[atl_idx * 2]),
+            date: dates[atl_idx].clone(),
             days_since: days_since(atl_idx),
         },
         volatility: Volatility {

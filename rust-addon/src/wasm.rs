@@ -4,14 +4,14 @@ use serde::Serialize;
 
 use crate::indicators::{
     calculate_bollinger_bands, calculate_macd, calculate_moving_averages, calculate_rsi,
-    BollingerEntry, MacdEntry, MaEntry, RsiEntry,
+    BollingerEntry, MacdEntry, MaResult, RsiEntry,
 };
 use crate::signals::{calculate_signals, SignalEntry};
 use crate::summary::Summary;
 
 #[derive(Serialize)]
 struct AllResult {
-    moving_averages: Vec<MaEntry>,
+    moving_averages: MaResult,
     rsi: Vec<RsiEntry>,
     macd: Vec<MacdEntry>,
     bollinger_bands: Vec<BollingerEntry>,
@@ -35,12 +35,20 @@ fn expand_prices(one_year_prices: &[f64], years: usize) -> Vec<f64> {
 
 fn do_calculate_all(prices: &[f64], sma_windows: &[u32]) -> AllResult {
     let cutoff_years: u32 = 9;
-    let moving_averages = calculate_moving_averages(prices, sma_windows, cutoff_years);
-    let rsi = calculate_rsi(prices, 14, cutoff_years);
-    let macd = calculate_macd(prices, 12, 26, 9, cutoff_years);
-    let bollinger_bands = calculate_bollinger_bands(prices, 20, cutoff_years);
-    let summary = crate::summary::calculate_summary(prices);
-    let signals = calculate_signals(&moving_averages, &rsi, &macd, &bollinger_bands);
+    let dates = crate::utils::precompute_dates(prices);
+
+    let moving_averages = calculate_moving_averages(prices, sma_windows, cutoff_years, &dates);
+    let rsi = calculate_rsi(prices, 14, cutoff_years, &dates);
+    let macd = calculate_macd(prices, 12, 26, 9, cutoff_years, &dates);
+    let bollinger_bands = calculate_bollinger_bands(prices, 20, cutoff_years, &dates);
+    let summary = crate::summary::calculate_summary(prices, &dates);
+    let signals = calculate_signals(
+        &moving_averages.sma_keys,
+        &moving_averages.entries,
+        &rsi,
+        &macd,
+        &bollinger_bands,
+    );
     AllResult {
         moving_averages,
         rsi,

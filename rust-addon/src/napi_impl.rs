@@ -1,17 +1,17 @@
-use napi::bindgen_prelude::Float64Array;
+use napi::bindgen_prelude::{Buffer, Float64Array};
 use napi_derive::napi;
 use serde::Serialize;
 
 use crate::indicators::{
     calculate_bollinger_bands, calculate_macd, calculate_moving_averages, calculate_rsi,
-    BollingerEntry, MacdEntry, MaEntry, RsiEntry,
+    BollingerEntry, MacdEntry, MaResult, RsiEntry,
 };
 use crate::signals::{calculate_signals, SignalEntry};
 use crate::summary::{calculate_summary, Summary};
 
 #[derive(Serialize)]
 struct AllResult {
-    moving_averages: Vec<MaEntry>,
+    moving_averages: MaResult,
     rsi: Vec<RsiEntry>,
     macd: Vec<MacdEntry>,
     bollinger_bands: Vec<BollingerEntry>,
@@ -35,22 +35,29 @@ fn expand_prices(one_year_prices: &[f64], years: usize) -> Vec<f64> {
 
 fn do_calculate_all(prices: &[f64], sma_windows: &[u32]) -> AllResult {
     let cutoff_years: u32 = 9;
+    let dates = crate::utils::precompute_dates(prices);
 
     let ((moving_averages, rsi), (macd, bollinger_bands, summary)) = rayon::join(
         || {
-            let ma = calculate_moving_averages(prices, sma_windows, cutoff_years);
-            let rsi = calculate_rsi(prices, 14, cutoff_years);
+            let ma = calculate_moving_averages(prices, sma_windows, cutoff_years, &dates);
+            let rsi = calculate_rsi(prices, 14, cutoff_years, &dates);
             (ma, rsi)
         },
         || {
-            let macd = calculate_macd(prices, 12, 26, 9, cutoff_years);
-            let bb = calculate_bollinger_bands(prices, 20, cutoff_years);
-            let summary = calculate_summary(prices);
+            let macd = calculate_macd(prices, 12, 26, 9, cutoff_years, &dates);
+            let bb = calculate_bollinger_bands(prices, 20, cutoff_years, &dates);
+            let summary = calculate_summary(prices, &dates);
             (macd, bb, summary)
         },
     );
 
-    let signals = calculate_signals(&moving_averages, &rsi, &macd, &bollinger_bands);
+    let signals = calculate_signals(
+        &moving_averages.sma_keys,
+        &moving_averages.entries,
+        &rsi,
+        &macd,
+        &bollinger_bands,
+    );
     AllResult {
         moving_averages,
         rsi,
@@ -68,7 +75,8 @@ pub fn calculate_moving_averages_json(
     cutoff_years: Option<u32>,
 ) -> String {
     let cutoff_years = cutoff_years.unwrap_or(9);
-    let result = calculate_moving_averages(&prices, &sma_windows, cutoff_years);
+    let dates = crate::utils::precompute_dates(&prices);
+    let result = calculate_moving_averages(&prices, &sma_windows, cutoff_years, &dates);
     serde_json::to_string(&result).unwrap()
 }
 
@@ -80,7 +88,8 @@ pub fn calculate_rsi_json(
 ) -> String {
     let period = period.unwrap_or(14);
     let cutoff_years = cutoff_years.unwrap_or(9);
-    let result = calculate_rsi(&prices, period, cutoff_years);
+    let dates = crate::utils::precompute_dates(&prices);
+    let result = calculate_rsi(&prices, period, cutoff_years, &dates);
     serde_json::to_string(&result).unwrap()
 }
 
@@ -96,7 +105,8 @@ pub fn calculate_macd_json(
     let slow = slow.unwrap_or(26);
     let signal = signal.unwrap_or(9);
     let cutoff_years = cutoff_years.unwrap_or(9);
-    let result = calculate_macd(&prices, fast, slow, signal, cutoff_years);
+    let dates = crate::utils::precompute_dates(&prices);
+    let result = calculate_macd(&prices, fast, slow, signal, cutoff_years, &dates);
     serde_json::to_string(&result).unwrap()
 }
 
@@ -126,4 +136,21 @@ pub fn calculate_all_from_raw(
     let prices = expand_prices(&one_year_prices, years);
     let result = do_calculate_all(&prices, &sma_windows);
     serde_json::to_string(&result).unwrap()
+}
+
+#[napi]
+pub fn calculate_all_from_raw_http(
+    one_year_prices: Float64Array,
+    data_points: u32,
+    years: Option<u32>,
+    sma_windows: Vec<u32>,
+) -> Buffer {
+    let years = years.unwrap_or(10) as usize;
+    let prices = expand_prices(&one_year_prices, years);
+    let result = do_calculate_all(&prices, &sma_windows);
+    let mut val = serde_json::to_value(&result).unwrap();
+    val.as_object_mut().unwrap()
+        .insert("data_points".into(), serde_json::Value::Number(data_points.into()));
+    let bytes = serde_json::to_vec(&val).unwrap();
+    Buffer::from(bytes)
 }

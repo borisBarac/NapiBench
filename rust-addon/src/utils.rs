@@ -16,3 +16,10 @@ pub fn timestamp_to_date(ts: f64) -> String {
     let y = if m <= 2 { y + 1 } else { y };
     format!("{:04}-{:02}-{:02}", y, m, d)
 }
+
+pub fn precompute_dates(prices: &[f64]) -> Vec<String> {
+    let num_points = prices.len() / 2;
+    (0..num_points)
+        .map(|i| timestamp_to_date(prices[i * 2]))
+        .collect()
+}
