@@ -61,7 +61,7 @@ export function createServer(port = APP_SERVER_PORT) {
         oneYearFlat[i * 2] = body.prices[i][0];
         oneYearFlat[i * 2 + 1] = body.prices[i][1];
       }
-      const rustResult = native.calculateAllFromRawHttp(oneYearFlat, n, 10, [25, 50, 100, 200]);
+      const rustResult = await native.calculateAllFromRawAsync(oneYearFlat, 10, [25, 50, 100, 200]);
       res.type('json').send(rustResult);
     } catch (err) {
       res.status(500).json({ error: err.message });

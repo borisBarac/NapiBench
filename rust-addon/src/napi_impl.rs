@@ -19,6 +19,13 @@ struct AllResult {
     signals: Vec<SignalEntry>,
 }
 
+#[derive(Serialize)]
+struct AllResultHttp {
+    data_points: u32,
+    #[serde(flatten)]
+    inner: AllResult,
+}
+
 fn expand_prices(one_year_prices: &[f64], years: usize) -> Vec<f64> {
     let year_ms = 365.0 * 24.0 * 3600.0 * 1000.0;
     let n = one_year_prices.len() / 2;
@@ -148,9 +155,36 @@ pub fn calculate_all_from_raw_http(
     let years = years.unwrap_or(10) as usize;
     let prices = expand_prices(&one_year_prices, years);
     let result = do_calculate_all(&prices, &sma_windows);
-    let mut val = serde_json::to_value(&result).unwrap();
-    val.as_object_mut().unwrap()
-        .insert("data_points".into(), serde_json::Value::Number(data_points.into()));
-    let bytes = serde_json::to_vec(&val).unwrap();
-    Buffer::from(bytes)
+    let http_result = AllResultHttp { data_points, inner: result };
+    Buffer::from(serde_json::to_vec(&http_result).unwrap())
+}
+
+#[napi]
+pub async fn calculate_all_async(prices: Float64Array, sma_windows: Vec<u32>) -> Buffer {
+    let prices_vec = prices.to_vec();
+    let sma_windows_clone = sma_windows.clone();
+    let result = napi::tokio::task::spawn_blocking(move || {
+        do_calculate_all(&prices_vec, &sma_windows_clone)
+    })
+    .await
+    .unwrap();
+    Buffer::from(serde_json::to_vec(&result).unwrap())
+}
+
+#[napi]
+pub async fn calculate_all_from_raw_async(
+    one_year_prices: Float64Array,
+    years: Option<u32>,
+    sma_windows: Vec<u32>,
+) -> Buffer {
+    let years = years.unwrap_or(10) as usize;
+    let prices_vec = one_year_prices.to_vec();
+    let sma_windows_clone = sma_windows.clone();
+    let result = napi::tokio::task::spawn_blocking(move || {
+        let prices = expand_prices(&prices_vec, years);
+        do_calculate_all(&prices, &sma_windows_clone)
+    })
+    .await
+    .unwrap();
+    Buffer::from(serde_json::to_vec(&result).unwrap())
 }

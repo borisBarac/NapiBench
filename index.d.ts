@@ -2,7 +2,11 @@
 /* eslint-disable */
 export declare function calculateAll(prices: Float64Array, smaWindows: Array<number>): string
 
+export declare function calculateAllAsync(prices: Float64Array, smaWindows: Array<number>): Promise<Buffer>
+
 export declare function calculateAllFromRaw(oneYearPrices: Float64Array, years: number | undefined | null, smaWindows: Array<number>): string
+
+export declare function calculateAllFromRawAsync(oneYearPrices: Float64Array, years: number | undefined | null, smaWindows: Array<number>): Promise<Buffer>
 
 export declare function calculateAllFromRawHttp(oneYearPrices: Float64Array, dataPoints: number, years: number | undefined | null, smaWindows: Array<number>): Buffer
 
