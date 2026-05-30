@@ -1,14 +1,29 @@
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 
 const baseUrl = __ENV.BASE_URL || 'http://localhost:3033';
 
+const sizes = {
+  s:  { rate: 500,  duration: '1m' },
+  m:  { rate: 2000, duration: '3m' },
+  l:  { rate: 5000, duration: '5m' },
+  sl: { rate: 5000, duration: '1m' },
+};
+
+const size = __ENV.SIZE || 's';
+const cfg = sizes[size] || sizes.s;
+
 export const options = {
-  stages: [
-    { duration: '30s', target: 20 },
-    { duration: '1m', target: 20 },
-    { duration: '10s', target: 0 },
-  ],
+  scenarios: {
+    stress: {
+      executor: 'constant-arrival-rate',
+      rate: cfg.rate,
+      timeUnit: '1s',
+      duration: cfg.duration,
+      preAllocatedVUs: 200,
+      maxVUs: 2000,
+    },
+  },
   thresholds: {
     http_req_failed: ['rate < 0.01'],
     http_req_duration: ['p(95) < 500'],
@@ -16,7 +31,8 @@ export const options = {
 };
 
 export default function () {
-  const url = `${baseUrl}/price`;
+  const endpoint = __ENV.ENDPOINT || '/price';
+  const url = `${baseUrl}${endpoint}`;
 
   const params = {
     headers: {
@@ -37,6 +53,4 @@ export default function () {
       }
     },
   });
-
-  sleep(1);
 }
