@@ -1,6 +1,7 @@
+use serde::ser::{SerializeStruct, Serializer};
 use serde::Serialize;
 
-use crate::utils::round2;
+use crate::utils::{format_date, round2};
 
 #[cfg(not(feature = "wasm"))]
 fn now_ms() -> i64 {
@@ -15,20 +16,42 @@ fn now_ms() -> i64 {
     js_sys::Date::now() as i64
 }
 
-#[derive(Serialize)]
 pub(crate) struct PriceChange {
     absolute: f64,
     percent: f64,
 }
 
-#[derive(Serialize)]
+impl Serialize for PriceChange {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("PriceChange", 2)?;
+        s.serialize_field("absolute", &self.absolute)?;
+        s.serialize_field("percent", &self.percent)?;
+        s.end()
+    }
+}
+
 pub(crate) struct AllTimeExtreme {
     price: f64,
-    date: String,
+    date_ts: i64,
     days_since: i64,
 }
 
-#[derive(Serialize)]
+impl Serialize for AllTimeExtreme {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("AllTimeExtreme", 3)?;
+        s.serialize_field("price", &self.price)?;
+        s.serialize_field("date", &format_date(self.date_ts))?;
+        s.serialize_field("days_since", &self.days_since)?;
+        s.end()
+    }
+}
+
 pub(crate) struct Volatility {
     daily_avg: f64,
     weekly_avg: f64,
@@ -36,13 +59,37 @@ pub(crate) struct Volatility {
     yearly_avg: f64,
 }
 
-#[derive(Serialize)]
-pub(crate) struct DateRange {
-    from: String,
-    to: String,
+impl Serialize for Volatility {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("Volatility", 4)?;
+        s.serialize_field("daily_avg", &self.daily_avg)?;
+        s.serialize_field("weekly_avg", &self.weekly_avg)?;
+        s.serialize_field("monthly_avg", &self.monthly_avg)?;
+        s.serialize_field("yearly_avg", &self.yearly_avg)?;
+        s.end()
+    }
 }
 
-#[derive(Serialize)]
+pub(crate) struct DateRange {
+    from_ts: i64,
+    to_ts: i64,
+}
+
+impl Serialize for DateRange {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("DateRange", 2)?;
+        s.serialize_field("from", &format_date(self.from_ts))?;
+        s.serialize_field("to", &format_date(self.to_ts))?;
+        s.end()
+    }
+}
+
 pub struct Summary {
     pub symbol: String,
     pub currency: String,
@@ -56,7 +103,27 @@ pub struct Summary {
     pub volatility: Volatility,
 }
 
-pub fn calculate_summary(prices: &[f64], dates: &[String]) -> Summary {
+impl Serialize for Summary {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("Summary", 9)?;
+        s.serialize_field("symbol", &self.symbol)?;
+        s.serialize_field("currency", &self.currency)?;
+        s.serialize_field("date_range", &self.date_range)?;
+        s.serialize_field("latest_price", &self.latest_price)?;
+        s.serialize_field("price_change_24h", &self.price_change_24h)?;
+        s.serialize_field("price_change_7d", &self.price_change_7d)?;
+        s.serialize_field("price_change_30d", &self.price_change_30d)?;
+        s.serialize_field("all_time_high", &self.all_time_high)?;
+        s.serialize_field("all_time_low", &self.all_time_low)?;
+        s.serialize_field("volatility", &self.volatility)?;
+        s.end()
+    }
+}
+
+pub fn calculate_summary(prices: &[f64], dates: &[i64]) -> Summary {
     let num_points = prices.len() / 2;
     let now_ms = now_ms();
 
@@ -114,7 +181,6 @@ pub fn calculate_summary(prices: &[f64], dates: &[String]) -> Summary {
         let ret = ((curr - prev) / prev * 100.0).abs();
 
         if ring_filled >= max_window {
-            let _old = ring[ring_pos];
             for (wi, &ws) in window_sizes.iter().enumerate() {
                 if ring_filled >= ws {
                     let old_idx = (ring_pos + max_window - ws) % max_window;
@@ -168,8 +234,8 @@ pub fn calculate_summary(prices: &[f64], dates: &[String]) -> Summary {
         symbol: "BTC".to_string(),
         currency: "USD".to_string(),
         date_range: DateRange {
-            from: dates[0].clone(),
-            to: dates[num_points - 1].clone(),
+            from_ts: dates[0],
+            to_ts: dates[num_points - 1],
         },
         latest_price,
         price_change_24h: price_change(1),
@@ -177,12 +243,12 @@ pub fn calculate_summary(prices: &[f64], dates: &[String]) -> Summary {
         price_change_30d: price_change(30),
         all_time_high: AllTimeExtreme {
             price: round2(ath_price),
-            date: dates[ath_idx].clone(),
+            date_ts: dates[ath_idx],
             days_since: days_since(ath_idx),
         },
         all_time_low: AllTimeExtreme {
             price: round2(atl_price),
-            date: dates[atl_idx].clone(),
+            date_ts: dates[atl_idx],
             days_since: days_since(atl_idx),
         },
         volatility: Volatility {

@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::indicators::{BollingerEntry, MaEntry, MacdEntry, RsiEntry};
-use crate::utils::round2;
+use crate::utils::{format_date, round2};
 
 #[derive(Serialize)]
 pub struct MaCross {
@@ -44,12 +44,26 @@ pub struct CompositeScore {
     pub confidence: f64,
 }
 
-#[derive(Serialize)]
 pub struct SignalEntry {
-    pub date: String,
+    pub date_ts: i64,
     pub indicators: Indicators,
     pub composite_score: CompositeScore,
     pub recommendation: &'static str,
+}
+
+impl Serialize for SignalEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("SignalEntry", 4)?;
+        s.serialize_field("date", &format_date(self.date_ts))?;
+        s.serialize_field("indicators", &self.indicators)?;
+        s.serialize_field("composite_score", &self.composite_score)?;
+        s.serialize_field("recommendation", &self.recommendation)?;
+        s.end()
+    }
 }
 
 pub fn calculate_signals(
@@ -74,42 +88,42 @@ pub fn calculate_signals(
     let mut results = Vec::new();
 
     loop {
-        let ma_date = moving_averages.get(ma_i).map(|e| e.date.as_str());
-        let rsi_date = rsi.get(rsi_i).map(|e| e.date.as_str());
-        let macd_date = macd.get(macd_i).map(|e| e.date.as_str());
-        let bb_date = bollinger_bands.get(bb_i).map(|e| e.date.as_str());
+        let ma_ts = moving_averages.get(ma_i).map(|e| e.date_ts);
+        let rsi_ts = rsi.get(rsi_i).map(|e| e.date_ts);
+        let macd_ts = macd.get(macd_i).map(|e| e.date_ts);
+        let bb_ts = bollinger_bands.get(bb_i).map(|e| e.date_ts);
 
-        let date = match [ma_date, rsi_date, macd_date, bb_date]
+        let date_ts = match [ma_ts, rsi_ts, macd_ts, bb_ts]
             .iter()
-            .filter_map(|&d| d)
+            .filter_map(|&t| t)
             .min()
         {
-            Some(d) => d,
+            Some(t) => t,
             None => break,
         };
 
-        let ma = if ma_date == Some(date) {
+        let ma = if ma_ts == Some(date_ts) {
             let e = &moving_averages[ma_i];
             ma_i += 1;
             Some(e)
         } else {
             None
         };
-        let rsi_entry = if rsi_date == Some(date) {
+        let rsi_entry = if rsi_ts == Some(date_ts) {
             let e = &rsi[rsi_i];
             rsi_i += 1;
             Some(e)
         } else {
             None
         };
-        let macd_entry = if macd_date == Some(date) {
+        let macd_entry = if macd_ts == Some(date_ts) {
             let e = &macd[macd_i];
             macd_i += 1;
             Some(e)
         } else {
             None
         };
-        let bb = if bb_date == Some(date) {
+        let bb = if bb_ts == Some(date_ts) {
             let e = &bollinger_bands[bb_i];
             bb_i += 1;
             Some(e)
@@ -255,7 +269,7 @@ pub fn calculate_signals(
         };
 
         results.push(SignalEntry {
-            date: date.to_string(),
+            date_ts,
             indicators: Indicators {
                 ma_cross,
                 rsi_divergence,

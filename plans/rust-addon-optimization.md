@@ -29,27 +29,28 @@ Every napi function that currently returns `String` via `serde_json::to_string()
 - [ ] **2.8** Update `bench/benchmark-functions.js` — native benchmark should decode Buffer
 - [ ] **2.9** Update `tests/native.test.js` — decode Buffer before asserting
 
-## Phase 3: Eliminate internal String date allocations
+## Phase 3: Eliminate internal String date allocations ✅
 
-Change the internal data flow from `Vec<String>` dates to `Vec<i64>` timestamps. Date formatting happens only at serialization time.
+Changed internal data flow from `Vec<String>` dates to `Vec<i64>` timestamps. Date formatting happens only at serialization time. Removed thousands of heap-allocated strings and replaced merge loop string comparisons with integer comparisons.
 
-- [ ] **3.1** `utils.rs` — change `precompute_dates` to return `Vec<i64>` (raw ms timestamps)
-  - Add `format_date(ts: i64) -> String` helper used only at output boundary
-- [ ] **3.2** `indicators.rs` — change all entry structs to store `date_ts: i64` instead of `date: String`
+- [x] **3.1** `utils.rs` — change `precompute_dates` to return `Vec<i64>` (raw ms timestamps)
+  - Added `format_date(ts: i64) -> String` helper used only at output boundary
+  - Renamed `timestamp_to_date(f64)` → `format_date(i64)`
+- [x] **3.2** `indicators.rs` — change all entry structs to store `date_ts: i64` instead of `date: String`
   - `MaEntry.date` → `date_ts: i64`
   - `RsiEntry.date` → `date_ts: i64`
   - `MacdEntry.date` → `date_ts: i64`
   - `BollingerEntry.date` → `date_ts: i64`
-- [ ] **3.3** `indicators.rs` — update `Serialize` impls to format `date_ts` → `"date"` string field in JSON output
-- [ ] **3.4** `signals.rs` — change `SignalEntry.date` to `date_ts: i64`, update `Serialize` impl
-- [ ] **3.5** `signals.rs` — update `calculate_signals` merge loop to compare `i64` instead of `String`
+- [x] **3.3** `indicators.rs` — update `Serialize` impls to format `date_ts` → `"date"` string field in JSON output
+- [x] **3.4** `signals.rs` — change `SignalEntry.date` to `date_ts: i64`, update `Serialize` impl
+- [x] **3.5** `signals.rs` — update `calculate_signals` merge loop to compare `i64` instead of `String`
   - `dates` parameter becomes `&[i64]`
-  - `signals.rs:76-88` string comparison → integer comparison
-- [ ] **3.6** `summary.rs` — update `calculate_summary` to accept `&[i64]` dates, format only in `Serialize`
+  - String comparison → integer comparison
+- [x] **3.6** `summary.rs` — update `calculate_summary` to accept `&[i64]` dates, format only in `Serialize`
   - `AllTimeExtreme.date` → `date_ts: i64` + custom serialize
   - `DateRange.from/to` → `from_ts: i64`, `to_ts: i64` + custom serialize
-- [ ] **3.7** `napi_impl.rs` — adapt `do_calculate_all` to pass `&[i64]` instead of `&[String]`
-- [ ] **3.8** `wasm.rs` — adapt `do_calculate_all` to pass `&[i64]` instead of `&[String]`
+- [x] **3.7** `napi_impl.rs` — no changes needed, `precompute_dates()` return type flows through automatically
+- [x] **3.8** `wasm.rs` — no changes needed, same reason
 
 ## Phase 4: Make CPU-heavy functions async ✅
 
