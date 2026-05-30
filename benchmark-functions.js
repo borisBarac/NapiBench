@@ -124,6 +124,7 @@ function generateHtmlReport(allResults, runtime) {
 </body>
 </html>`;
 
+  mkdirSync("reports", { recursive: true });
   writeFileSync(`reports/${runtime.toLowerCase().replace(/ /g, "-")}_benchmark-functions.html`, html);
   console.log(`\nHTML report generated: reports/${runtime.toLowerCase().replace(/ /g, "-")}_benchmark-functions.html`);
 }
