@@ -21,6 +21,16 @@ echo ""
 bun run "$ROOT_DIR/bench/benchmark-functions.js"
 echo ""
 
+echo ">>> Building WASM..."
+echo ""
+npm run build:wasm --prefix "$ROOT_DIR"
+echo ""
+
+echo ">>> Running with Headless Browser (Playwright)..."
+echo ""
+node "$ROOT_DIR/bench/benchmark-browser.js"
+echo ""
+
 echo ">>> Generating combined report..."
 node -e "
 const fs = require('fs');
@@ -35,14 +45,18 @@ function findJson(name) {
 
 const nodeFile = findJson('node');
 const bunFile = findJson('bun');
+const browserFile = findJson('browser');
 
 if (!nodeFile || !bunFile) {
-  console.error('Missing results files');
+  console.error('Missing Node.js or Bun results files');
   process.exit(1);
 }
 
 const nodeResults = JSON.parse(fs.readFileSync(path.join(reportsDir, nodeFile), 'utf-8'));
 const bunResults = JSON.parse(fs.readFileSync(path.join(reportsDir, bunFile), 'utf-8'));
+const browserResults = browserFile
+  ? JSON.parse(fs.readFileSync(path.join(reportsDir, browserFile), 'utf-8'))
+  : null;
 
 function formatNs(ns) {
   if (ns < 1_000) return ns.toFixed(2) + ' ns';
@@ -58,7 +72,7 @@ function renderRuntimeSection(title, runtimeResults, accentColor) {
       const pct = ((r.opsSec / maxOps) * 100).toFixed(1);
       const isNative = r.name.startsWith('Native');
       const color = isNative ? '#f97316' : '#3b82f6';
-      const label = isNative ? 'Native (Rust/N-API)' : 'JavaScript';
+      const label = isNative ? 'Native (Rust)' : 'JavaScript';
       return \`
         <div class=\"bar-row\">
           <div class=\"bar-label\">
@@ -99,6 +113,7 @@ function renderRuntimeSection(title, runtimeResults, accentColor) {
 
 const nodeSection = renderRuntimeSection('Node.js', nodeResults, '#68a063');
 const bunSection = renderRuntimeSection('Bun', bunResults, '#fbf0df');
+const browserSection = browserResults ? renderRuntimeSection('Browser (Chromium)', browserResults, '#a855f7') : '';
 
 const html = \`<!DOCTYPE html>
 <html lang=\"en\">
@@ -138,13 +153,15 @@ const html = \`<!DOCTYPE html>
 </head>
 <body>
   <h1>NapiBench — Combined Report</h1>
-  <p class=\"subtitle\">Node.js vs Bun — JavaScript vs Native (Rust/N-API) Performance Comparison</p>
+  <p class=\"subtitle\">Node.js vs Bun vs Browser — JavaScript vs Native (Rust/N-API + WASM) Performance Comparison</p>
   <div class=\"legend\">
     <div class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#3b82f6\"></span> JavaScript</div>
-    <div class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#f97316\"></span> Native (Rust/N-API)</div>
+    <div class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#f97316\"></span> Native (Rust)</div>
+    <div class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#a855f7\"></span> Browser (Chromium)</div>
   </div>
   \${nodeSection}
   \${bunSection}
+  \${browserSection}
   <p class=\"footer\">Generated with <a href=\"https://github.com/evanwashere/mitata\">mitata</a></p>
 </body>
 </html>\`;

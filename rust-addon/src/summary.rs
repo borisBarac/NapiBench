@@ -2,6 +2,19 @@ use serde::Serialize;
 
 use crate::utils::{round2, timestamp_to_date};
 
+#[cfg(not(feature = "wasm"))]
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
+
+#[cfg(feature = "wasm")]
+fn now_ms() -> i64 {
+    js_sys::Date::now() as i64
+}
+
 #[derive(Serialize)]
 pub(crate) struct PriceChange {
     absolute: f64,
@@ -45,10 +58,7 @@ pub struct Summary {
 
 pub fn calculate_summary(prices: &[f64]) -> Summary {
     let num_points = prices.len() / 2;
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
+    let now_ms = now_ms();
 
     let latest_price = round2(prices[(num_points - 1) * 2 + 1]);
 

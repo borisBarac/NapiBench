@@ -3,15 +3,21 @@ name = "napibench-native"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["napi", "napi-derive", "rayon", "napi-build"]
+wasm = ["wasm-bindgen", "js-sys"]
+
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
-napi = { version = "3", features = ["napi4", "serde-json"] }
-napi-derive = "3"
-rayon = "1"
+napi = { version = "3", features = ["napi4", "serde-json"], optional = true }
+napi-derive = { version = "3", optional = true }
+rayon = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
 
 [build-dependencies]
-napi-build = "2"
+napi-build = { version = "2", optional = true }

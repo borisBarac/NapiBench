@@ -6,7 +6,7 @@
   "devDependencies": {
     "@napi-rs/cli": "^3.7.0",
     "@types/bun": "latest",
-
+    "playwright": "^1.52.0",
     "vitest": "^4.1.7"
   },
   "peerDependencies": {
@@ -14,7 +14,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "build:native": "napi build --release --manifest-path rust-addon/Cargo.toml --package-json-path package.json --output-dir ."
+    "build:native": "napi build --release --manifest-path rust-addon/Cargo.toml --package-json-path package.json --output-dir .",
+    "build:wasm": "wasm-pack build rust-addon --target web --out-dir ../pkg -- --no-default-features --features wasm"
   },
   "napi": {
     "binaryName": "napibench-native"

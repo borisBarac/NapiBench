@@ -160,4 +160,10 @@ Cargo.lock
 # Native addon binaries
 *.node
 
+# WASM build output
+pkg/
+
+# Benchmark reports
+reports/
+
 # End of https://www.toptal.com/developers/gitignore/api/node,rust
