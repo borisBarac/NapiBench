@@ -44,25 +44,11 @@ fn do_calculate_all(prices: &[f64], sma_windows: &[u32]) -> AllResult {
     let cutoff_years: u32 = 9;
     let dates = crate::utils::precompute_dates(prices);
 
-    let (((moving_averages, rsi), (macd, bollinger_bands)), summary) = rayon::join(
-        || {
-            rayon::join(
-                || {
-                    rayon::join(
-                        || crate::indicators::calculate_moving_averages(prices, sma_windows, cutoff_years, &dates),
-                        || crate::indicators::calculate_rsi(prices, 14, cutoff_years, &dates),
-                    )
-                },
-                || {
-                    rayon::join(
-                        || crate::indicators::calculate_macd(prices, 12, 26, 9, cutoff_years, &dates),
-                        || crate::indicators::calculate_bollinger_bands(prices, 20, cutoff_years, &dates),
-                    )
-                },
-            )
-        },
-        || crate::summary::calculate_summary(prices, &dates),
-    );
+    let moving_averages = crate::indicators::calculate_moving_averages(prices, sma_windows, cutoff_years, &dates);
+    let rsi = crate::indicators::calculate_rsi(prices, 14, cutoff_years, &dates);
+    let macd = crate::indicators::calculate_macd(prices, 12, 26, 9, cutoff_years, &dates);
+    let bollinger_bands = crate::indicators::calculate_bollinger_bands(prices, 20, cutoff_years, &dates);
+    let summary = crate::summary::calculate_summary(prices, &dates);
 
     let signals = calculate_signals(
         &moving_averages.sma_keys,

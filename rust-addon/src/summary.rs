@@ -233,12 +233,6 @@ pub fn calculate_summary(prices: &[f64], dates: &[i64]) -> Summary {
         }
     };
 
-    #[cfg(feature = "rayon")]
-    let ((ath_price, ath_idx, atl_price, atl_idx), volatility) = rayon::join(
-        || find_extremes(prices, num_points),
-        || compute_volatility(prices, num_points),
-    );
-    #[cfg(not(feature = "rayon"))]
     let ((ath_price, ath_idx, atl_price, atl_idx), volatility) =
         (find_extremes(prices, num_points), compute_volatility(prices, num_points));
 
