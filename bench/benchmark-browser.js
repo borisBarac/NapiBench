@@ -35,8 +35,8 @@ if (!existsSync(resolve(WASM_DIR, "napibench_native.js"))) {
 async function runBrowserBenchmark() {
   console.log(
     `Benchmarking Full Pipeline with ${
-      oneYearPrices.length * 10
-    } price points (10 years)\n`
+      oneYearPrices.length * 1000
+    } price points (1000 years)\n`
   );
 
   const browser = await chromium.launch({ headless: true });
@@ -62,7 +62,7 @@ async function runBrowserBenchmark() {
   };
 
   window.jsPipeline = () => {
-    const p = expandPrices(window.oneYearPrices, 10);
+    const p = expandPrices(window.oneYearPrices, 1000);
     const ma = calculateMovingAverages(p, window.smaWindows);
     const rsi = calculateRSI(p);
     const macd = calculateMACD(p);
@@ -72,7 +72,7 @@ async function runBrowserBenchmark() {
   };
 
   window.wasmPipeline = () => {
-    window.wasmCalculateAllFromRaw(window.oneYearFlat, 10, window.smaWindows);
+    window.wasmCalculateAllFromRaw(window.oneYearFlat, 1000, window.smaWindows);
   };
 
   window.__ready = true;

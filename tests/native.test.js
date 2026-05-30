@@ -8,6 +8,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const native = require("../napibench-native.node");
+const decode = (buf) => JSON.parse(new TextDecoder().decode(buf));
 
 function makePrices(values) {
   const base = new Date("2024-01-01").getTime();
@@ -26,7 +27,7 @@ function makePricesJs(values) {
 
 test("native calculateMovingAverages returns correct SMA values", () => {
   const prices = makePrices([10, 20, 30, 40, 50]);
-  const result = JSON.parse(native.calculateMovingAveragesJson(prices, [3], 1));
+  const result = decode(native.calculateMovingAverages(prices, [3], 1));
 
   expect(result).toHaveLength(5);
   expect(result[0].sma_3).toBeNull();
@@ -38,14 +39,14 @@ test("native calculateMovingAverages returns correct SMA values", () => {
 
 test("native calculateMovingAverages respects cutoffYears", () => {
   const prices = makePrices(Array.from({ length: 800 }, (_, i) => i + 1));
-  const result = JSON.parse(native.calculateMovingAveragesJson(prices, [3], 1));
+  const result = decode(native.calculateMovingAverages(prices, [3], 1));
 
   expect(result).toHaveLength(365);
 });
 
 test("native calculateMovingAverages includes date and price", () => {
   const prices = makePrices([42.5]);
-  const result = JSON.parse(native.calculateMovingAveragesJson(prices, [3], 1));
+  const result = decode(native.calculateMovingAverages(prices, [3], 1));
 
   expect(result[0].date).toBe("2024-01-01");
   expect(result[0].price).toBe(42.5);
@@ -53,7 +54,7 @@ test("native calculateMovingAverages includes date and price", () => {
 
 test("native calculateMovingAverages works with multiple windows", () => {
   const prices = makePrices(Array.from({ length: 250 }, (_, i) => 100 + i));
-  const result = JSON.parse(native.calculateMovingAveragesJson(prices, [25, 50, 100, 200], 1));
+  const result = decode(native.calculateMovingAverages(prices, [25, 50, 100, 200], 1));
 
   expect(result.length).toBeGreaterThan(0);
   const last = result[result.length - 1];
@@ -65,7 +66,7 @@ test("native calculateMovingAverages works with multiple windows", () => {
 
 test("native calculateRsi returns ~100 for monotonically increasing prices", () => {
   const prices = makePrices(Array.from({ length: 30 }, (_, i) => 100 + i));
-  const result = JSON.parse(native.calculateRsiJson(prices, 14, 1));
+  const result = decode(native.calculateRsi(prices, 14, 1));
 
   for (const entry of result) {
     expect(entry.rsi).toBeGreaterThanOrEqual(99);
@@ -74,7 +75,7 @@ test("native calculateRsi returns ~100 for monotonically increasing prices", () 
 
 test("native calculateRsi returns 0 for monotonically decreasing prices", () => {
   const prices = makePrices(Array.from({ length: 30 }, (_, i) => 200 - i));
-  const result = JSON.parse(native.calculateRsiJson(prices, 14, 1));
+  const result = decode(native.calculateRsi(prices, 14, 1));
 
   for (const entry of result) {
     expect(entry.rsi).toBe(0);
@@ -87,7 +88,7 @@ test("native calculateRsi returns mid-range for alternating prices", () => {
     values.push(i % 2 === 0 ? 100 : 101);
   }
   const prices = makePrices(values);
-  const result = JSON.parse(native.calculateRsiJson(prices, 14, 1));
+  const result = decode(native.calculateRsi(prices, 14, 1));
 
   expect(result.length).toBeGreaterThan(0);
   for (const entry of result) {
@@ -98,14 +99,14 @@ test("native calculateRsi returns mid-range for alternating prices", () => {
 
 test("native calculateRsi respects cutoffYears", () => {
   const prices = makePrices(Array.from({ length: 800 }, (_, i) => 100 + i));
-  const result = JSON.parse(native.calculateRsiJson(prices, 14, 1));
+  const result = decode(native.calculateRsi(prices, 14, 1));
 
   expect(result.length).toBeLessThanOrEqual(365);
 });
 
 test("native calculateMacd returns empty for insufficient data", () => {
   const prices = makePrices([100, 101, 102]);
-  const result = JSON.parse(native.calculateMacdJson(prices, 12, 26, 9, 1));
+  const result = decode(native.calculateMacd(prices, 12, 26, 9, 1));
 
   expect(result).toHaveLength(0);
 });
@@ -114,7 +115,7 @@ test("native calculateMacd returns correct fields", () => {
   const prices = makePrices(
     Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i) * 10)
   );
-  const result = JSON.parse(native.calculateMacdJson(prices, 12, 26, 9, 1));
+  const result = decode(native.calculateMacd(prices, 12, 26, 9, 1));
 
   expect(result.length).toBeGreaterThan(0);
   for (const entry of result) {
@@ -132,7 +133,7 @@ test("native calculateMacd histogram equals macd minus signal", () => {
   const prices = makePrices(
     Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i) * 10)
   );
-  const result = JSON.parse(native.calculateMacdJson(prices, 12, 26, 9, 1));
+  const result = decode(native.calculateMacd(prices, 12, 26, 9, 1));
 
   for (const entry of result) {
     const expected = Math.round((entry.macd - entry.signal) * 100) / 100;
@@ -144,7 +145,7 @@ test("native calculateMacd values are rounded to 2 decimals", () => {
   const prices = makePrices(
     Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i) * 10)
   );
-  const result = JSON.parse(native.calculateMacdJson(prices, 12, 26, 9, 1));
+  const result = decode(native.calculateMacd(prices, 12, 26, 9, 1));
 
   for (const entry of result) {
     const macdDecimals = (entry.macd.toString().split(".")[1] || "").length;
@@ -163,7 +164,7 @@ test("native output matches JS output for all three functions", () => {
   const pricesJs = makePricesJs(values);
 
   const jsMa = calculateMovingAverages(pricesJs, [25, 50, 100, 200], 1);
-  const rustMa = JSON.parse(native.calculateMovingAveragesJson(prices, [25, 50, 100, 200], 1));
+  const rustMa = decode(native.calculateMovingAverages(prices, [25, 50, 100, 200], 1));
   expect(rustMa).toHaveLength(jsMa.length);
   for (let i = 0; i < jsMa.length; i++) {
     expect(rustMa[i].price).toBe(jsMa[i].price);
@@ -173,14 +174,14 @@ test("native output matches JS output for all three functions", () => {
   }
 
   const jsRsi = calculateRSI(pricesJs, 14, 1);
-  const rustRsi = JSON.parse(native.calculateRsiJson(prices, 14, 1));
+  const rustRsi = decode(native.calculateRsi(prices, 14, 1));
   expect(rustRsi).toHaveLength(jsRsi.length);
   for (let i = 0; i < jsRsi.length; i++) {
     expect(Math.abs(rustRsi[i].rsi - jsRsi[i].rsi)).toBeLessThanOrEqual(0.01);
   }
 
   const jsMacd = calculateMACD(pricesJs, 12, 26, 9, 1);
-  const rustMacd = JSON.parse(native.calculateMacdJson(prices, 12, 26, 9, 1));
+  const rustMacd = decode(native.calculateMacd(prices, 12, 26, 9, 1));
   expect(rustMacd).toHaveLength(jsMacd.length);
   for (let i = 0; i < jsMacd.length; i++) {
     expect(Math.abs(rustMacd[i].macd - jsMacd[i].macd)).toBeLessThanOrEqual(0.01);

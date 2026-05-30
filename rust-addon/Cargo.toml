@@ -11,7 +11,7 @@ wasm = ["wasm-bindgen", "js-sys"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-napi = { version = "3", features = ["napi4", "serde-json"], optional = true }
+napi = { version = "3", features = ["napi4", "serde-json", "tokio_rt"], optional = true }
 napi-derive = { version = "3", optional = true }
 rayon = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }

@@ -1,27 +1,56 @@
+#[cfg(feature = "rayon")]
+use rayon::join as rayon_join;
+
 use serde::Serialize;
 
-use crate::utils::{round2, timestamp_to_date};
+use crate::utils::{format_date, round2};
 
 pub struct MaEntry {
-    pub date: String,
+    pub date_ts: i64,
     pub price: f64,
-    pub sma_keys: Vec<String>,
     pub sma_values: Vec<Option<f64>>,
 }
 
-impl Serialize for MaEntry {
+pub struct MaResult {
+    pub sma_keys: Vec<String>,
+    pub entries: Vec<MaEntry>,
+}
+
+struct MaEntrySerializer<'a> {
+    entry: &'a MaEntry,
+    keys: &'a [String],
+}
+
+impl Serialize for MaEntrySerializer<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(2 + self.sma_keys.len()))?;
-        map.serialize_entry("date", &self.date)?;
-        map.serialize_entry("price", &self.price)?;
-        for (k, v) in self.sma_keys.iter().zip(self.sma_values.iter()) {
+        let mut map = serializer.serialize_map(Some(2 + self.keys.len()))?;
+        map.serialize_entry("date", &format_date(self.entry.date_ts))?;
+        map.serialize_entry("price", &self.entry.price)?;
+        for (k, v) in self.keys.iter().zip(self.entry.sma_values.iter()) {
             map.serialize_entry(k, v)?;
         }
         map.end()
+    }
+}
+
+impl Serialize for MaResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.entries.len()))?;
+        for entry in &self.entries {
+            seq.serialize_element(&MaEntrySerializer {
+                entry,
+                keys: &self.sma_keys,
+            })?;
+        }
+        seq.end()
     }
 }
 
@@ -29,12 +58,12 @@ pub fn calculate_moving_averages(
     prices: &[f64],
     sma_windows: &[u32],
     cutoff_years: u32,
-) -> Vec<MaEntry> {
+    dates: &[i64],
+) -> MaResult {
     let num_points = prices.len() / 2;
     let cutoff_index = 0usize.max(num_points.saturating_sub((cutoff_years as usize) * 365));
-    let mut results = Vec::with_capacity(num_points - cutoff_index);
+    let mut entries = Vec::with_capacity(num_points - cutoff_index);
 
-    let sma_keys: Vec<String> = sma_windows.iter().map(|w| format!("sma_{}", w)).collect();
     let mut running_sums: Vec<f64> = vec![0.0; sma_windows.len()];
 
     for i in 0..num_points {
@@ -49,7 +78,6 @@ pub fn calculate_moving_averages(
         }
 
         if i >= cutoff_index {
-            let date = timestamp_to_date(prices[i * 2]);
             let sma_values: Vec<Option<f64>> = sma_windows
                 .iter()
                 .enumerate()
@@ -62,25 +90,37 @@ pub fn calculate_moving_averages(
                     }
                 })
                 .collect();
-            results.push(MaEntry {
-                date,
+            entries.push(MaEntry {
+                date_ts: dates[i],
                 price: round2(price),
-                sma_keys: sma_keys.clone(),
                 sma_values,
             });
         }
     }
 
-    results
+    let sma_keys: Vec<String> = sma_windows.iter().map(|w| format!("sma_{}", w)).collect();
+    MaResult { sma_keys, entries }
 }
 
-#[derive(Serialize)]
 pub struct RsiEntry {
-    pub date: String,
+    pub date_ts: i64,
     pub rsi: f64,
 }
 
-pub fn calculate_rsi(prices: &[f64], period: u32, cutoff_years: u32) -> Vec<RsiEntry> {
+impl Serialize for RsiEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("RsiEntry", 2)?;
+        s.serialize_field("date", &format_date(self.date_ts))?;
+        s.serialize_field("rsi", &self.rsi)?;
+        s.end()
+    }
+}
+
+pub fn calculate_rsi(prices: &[f64], period: u32, cutoff_years: u32, dates: &[i64]) -> Vec<RsiEntry> {
     let period = period as usize;
     let num_points = prices.len() / 2;
     let cutoff_index = 0usize.max(num_points.saturating_sub((cutoff_years as usize) * 365));
@@ -129,7 +169,7 @@ pub fn calculate_rsi(prices: &[f64], period: u32, cutoff_years: u32) -> Vec<RsiE
             };
             let rsi = round2(100.0 - 100.0 / (1.0 + rs));
             results.push(RsiEntry {
-                date: timestamp_to_date(prices[i * 2]),
+                date_ts: dates[i],
                 rsi,
             });
         }
@@ -158,12 +198,26 @@ pub fn ema(values: &[f64], period: usize) -> Vec<f64> {
     result
 }
 
-#[derive(Serialize)]
 pub struct MacdEntry {
-    pub date: String,
+    pub date_ts: i64,
     pub macd: f64,
     pub signal: f64,
     pub histogram: f64,
+}
+
+impl Serialize for MacdEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("MacdEntry", 4)?;
+        s.serialize_field("date", &format_date(self.date_ts))?;
+        s.serialize_field("macd", &self.macd)?;
+        s.serialize_field("signal", &self.signal)?;
+        s.serialize_field("histogram", &self.histogram)?;
+        s.end()
+    }
 }
 
 pub fn calculate_macd(
@@ -172,6 +226,7 @@ pub fn calculate_macd(
     slow: u32,
     signal: u32,
     cutoff_years: u32,
+    dates: &[i64],
 ) -> Vec<MacdEntry> {
     let fast = fast as usize;
     let slow = slow as usize;
@@ -180,8 +235,13 @@ pub fn calculate_macd(
 
     let close_prices: Vec<f64> = (0..num_points).map(|i| prices[i * 2 + 1]).collect();
 
-    let fast_ema = ema(&close_prices, fast);
-    let slow_ema = ema(&close_prices, slow);
+    #[cfg(feature = "rayon")]
+    let (fast_ema, slow_ema) = rayon_join(
+        || ema(&close_prices, fast),
+        || ema(&close_prices, slow),
+    );
+    #[cfg(not(feature = "rayon"))]
+    let (fast_ema, slow_ema) = (ema(&close_prices, fast), ema(&close_prices, slow));
 
     let mut macd_line = Vec::new();
     for i in 0..fast_ema.len() {
@@ -203,7 +263,7 @@ pub fn calculate_macd(
         if price_idx >= cutoff_index && price_idx < num_points {
             let macd_val = macd_line[macd_line.len() - signal_line.len() + i];
             results.push(MacdEntry {
-                date: timestamp_to_date(prices[price_idx * 2]),
+                date_ts: dates[price_idx],
                 macd: round2(macd_val),
                 signal: round2(signal_line[i]),
                 histogram: round2(macd_val - signal_line[i]),
@@ -214,9 +274,8 @@ pub fn calculate_macd(
     results
 }
 
-#[derive(Serialize)]
 pub struct BollingerEntry {
-    pub date: String,
+    pub date_ts: i64,
     pub upper: f64,
     pub middle: f64,
     pub lower: f64,
@@ -224,10 +283,28 @@ pub struct BollingerEntry {
     pub percent_b: f64,
 }
 
+impl Serialize for BollingerEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("BollingerEntry", 6)?;
+        s.serialize_field("date", &format_date(self.date_ts))?;
+        s.serialize_field("upper", &self.upper)?;
+        s.serialize_field("middle", &self.middle)?;
+        s.serialize_field("lower", &self.lower)?;
+        s.serialize_field("bandwidth", &self.bandwidth)?;
+        s.serialize_field("percent_b", &self.percent_b)?;
+        s.end()
+    }
+}
+
 pub fn calculate_bollinger_bands(
     prices: &[f64],
     period: u32,
     cutoff_years: u32,
+    dates: &[i64],
 ) -> Vec<BollingerEntry> {
     let period = period as usize;
     let num_points = prices.len() / 2;
@@ -268,7 +345,7 @@ pub fn calculate_bollinger_bands(
             };
 
             results.push(BollingerEntry {
-                date: timestamp_to_date(prices[i * 2]),
+                date_ts: dates[i],
                 upper: round2(upper),
                 middle: round2(mean),
                 lower: round2(lower),
