@@ -18,82 +18,99 @@ bun install
 ## Running the Benchmark
 
 ```bash
-# Benchmark both runtimes (defaults: size=s, endpoint=/price)
-./scripts/run-bench.sh all
+# Benchmark both runtimes, both endpoints (default)
+./scripts/bench-k6.sh all
 
 # Benchmark Node.js only
-./scripts/run-bench.sh node
+./scripts/bench-k6.sh node
 
 # Benchmark Bun only
-./scripts/run-bench.sh bun
-```
-
-### Benchmark Sizes
-
-| Size | VUs | Ramp-up | Hold | Ramp-down |
-|------|-----|---------|------|-----------|
-| `s`  | 50  | 30s     | 1m   | 10s       |
-| `m`  | 200 | 1m      | 3m   | 30s       |
-| `l`  | 500 | 2m      | 5m   | 1m        |
-
-```bash
-SIZE=m ./scripts/run-bench.sh bun
-SIZE=l ./scripts/run-bench.sh all
+./scripts/bench-k6.sh bun
 ```
 
 ### Endpoint Selection
 
+By default, both endpoints are benchmarked:
+
+| Endpoint | Description |
+|----------|-------------|
+| `/price` | JS computation (moving averages, RSI, MACD, Bollinger Bands) |
+| `/price-rust` | Rust native computation via N-API (`calculateAllFromRawAsync`) |
+
+Override with the `ENDPOINTS` env var:
+
 ```bash
-# Default JS endpoint (/price)
-./scripts/run-bench.sh bun
+# Only JS endpoint
+ENDPOINTS="/price" ./scripts/bench-k6.sh all
 
-# Rust native endpoint (/price-rust)
-ENDPOINT=/price-rust ./scripts/run-bench.sh bun
+# Only Rust endpoint
+ENDPOINTS="/price-rust" ./scripts/bench-k6.sh all
 
-# Combined
-SIZE=m ENDPOINT=/price-rust ./scripts/run-bench.sh node
+# Both (default)
+ENDPOINTS="/price /price-rust" ./scripts/bench-k6.sh all
 ```
 
 ## Reports
 
 HTML reports and JSON metrics are saved to the `reports/` directory.
 
-### Filename Pattern
+### Individual Reports
+
+Each runtime/endpoint combination generates:
 
 ```
-reports/{runtime}_{size}[_{endpoint}]_report.html
-reports/{runtime}_{size}[_{endpoint}]_metrics.json
-reports/{runtime}_{size}[_{endpoint}]_metrics.log
+reports/{runtime}_{endpoint}_report.html      # Interactive k6 dashboard
+reports/{runtime}_{endpoint}_summary.json      # Latency, throughput, errors
+reports/{runtime}_{endpoint}_metrics.json      # Peak RSS, CPU usage
+reports/{runtime}_{endpoint}_metrics.log       # Raw sampling data
 ```
 
-### Examples
+### Combined Report
 
-| Flags | Report |
-|-------|--------|
-| *(defaults)* | `reports/node_s_report.html` |
-| `SIZE=m` | `reports/bun_m_report.html` |
-| `ENDPOINT=/price-rust` | `reports/bun_s_rust_report.html` |
-| `SIZE=l ENDPOINT=/price-rust` | `reports/node_l_rust_report.html` |
+When running with `all` (both runtimes), a combined comparison report is generated:
+
+```
+reports/combined_benchmark-k6.html
+```
+
+This shows side-by-side bar charts for all combinations (e.g. Node.js/JS, Node.js/Rust, Bun/JS, Bun/Rust) across latency, throughput, error rate, and resource usage metrics.
 
 ### What's Included
 
 - **HTML report** — Interactive k6 dashboard with latency, throughput, and error rate charts. A fixed resource usage bar at the bottom shows Peak RSS, Avg CPU, and Max CPU.
-- **JSON metrics** — Machine-readable `peak_rss_mb`, `avg_cpu_pct`, and `max_cpu_pct` for easy comparison.
+- **JSON summary** — Machine-readable latency (avg, p95, p99, min, max, med), throughput (rps, total requests), and error rate.
+- **JSON metrics** — `peak_rss_mb`, `avg_cpu_pct`, and `max_cpu_pct` for easy comparison.
+
+## Function Benchmarks
+
+Benchmark raw computation performance (JS vs Rust native vs WASM) across Node.js, Bun, and browser:
+
+```bash
+./scripts/bench-functions.sh
+```
 
 ## Project Structure
 
 ```
-├── fake_price.js        # Fake BTC price data server (Bun, port 3022)
-├── index.js             # Express API server (runs under Node or Bun)
-├── k6/
-│   └── bench.js         # Unified k6 load test (SIZE + ENDPOINT env vars)
-├── rust-addon/          # Rust N-API native addon source
+├── bench/
+│   ├── bench-k6.js              # k6 load test script
+│   ├── benchmark-functions.js   # mitata function benchmarks
+│   └── benchmark-browser.js     # Playwright browser benchmarks
+├── rust-addon/                  # Rust N-API native addon source
 ├── scripts/
-│   ├── setup.sh         # Installs k6 if missing
-│   └── run-bench.sh     # Orchestrates and runs benchmarks
-├── reports/             # Generated HTML reports + JSON metrics
-├── prices.json          # Sample BTC price data
-└── plans/               # Planning docs
+│   ├── setup.sh                 # Installs k6 if missing
+│   ├── bench-k6.sh              # K6 HTTP benchmark runner
+│   ├── bench-functions.sh       # Function benchmark runner
+│   ├── generate-combined-report.cjs  # Combined report generator
+│   └── kill_servers.sh          # Kill leftover server processes
+├── src/
+│   ├── server.js                # Express API server
+│   ├── fake-price.js            # Fake BTC price data server
+│   ├── indicators.js            # JS technical indicator calculations
+│   └── ports.config.js          # Port configuration
+├── reports/                     # Generated HTML reports + JSON metrics
+├── tests/                       # Test files
+└── plans/                       # Planning docs
 ```
 
 ## Running Tests

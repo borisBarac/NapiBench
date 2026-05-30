@@ -16,15 +16,9 @@ BUN_PORT=3033
 PIDS=()
 SERVER_PID=""
 RESULTS=()
+SLUGS=()
 
-BENCH_SIZE="${SIZE:-s}"
-BENCH_ENDPOINT="${ENDPOINT:-/price}"
-
-endpoint_suffix=""
-if [[ "$BENCH_ENDPOINT" != "/price" ]]; then
-  endpoint_suffix="_${BENCH_ENDPOINT#/price-}"
-fi
-BENCH_SLUG="_${BENCH_SIZE}${endpoint_suffix}"
+read -ra ENDPOINTS <<< "${ENDPOINTS:-/price /price-rust}"
 
 cleanup() {
   echo ""
@@ -74,6 +68,8 @@ compute_stats() {
 inject_metrics_to_html() {
   local htmlfile=$1
   local jsonfile=$2
+  local runtime_label="$3"
+  local endpoint_path="$4"
 
   if [[ ! -f "$htmlfile" || ! -f "$jsonfile" ]]; then
     return
@@ -84,24 +80,26 @@ inject_metrics_to_html() {
   avg_cpu=$(awk -F'"avg_cpu_pct":' '{split($2,a,","); print a[1]}' "$jsonfile")
   max_cpu=$(awk -F'"max_cpu_pct":' '{split($2,a,"}"); print a[1]}' "$jsonfile")
 
-  local metrics_block
-  metrics_block=$(cat <<METRICS_HEREDOC
+  local tmp snippet
+  tmp=$(mktemp)
+  snippet=$(mktemp)
+  cat > "$snippet" <<SNIPPET
 <div style="position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:#e0e0e0;padding:16px 24px;font-family:system-ui,-apple-system,sans-serif;border-top:2px solid #6c63ff;display:flex;gap:32px;align-items:center;z-index:9999">
-  <span style="font-size:14px;font-weight:700;color:#6c63ff;text-transform:uppercase;letter-spacing:1px">Server Resources</span>
+  <span style="font-size:14px;font-weight:700;color:#6c63ff;text-transform:uppercase;letter-spacing:1px">${runtime_label}</span>
+  <span style="font-size:14px">Endpoint: <strong>${endpoint_path}</strong></span>
   <span style="font-size:14px">Peak RSS: <strong>${peak_rss} MB</strong></span>
   <span style="font-size:14px">Avg CPU: <strong>${avg_cpu}%</strong></span>
   <span style="font-size:14px">Max CPU: <strong>${max_cpu}%</strong></span>
 </div>
 <div style="height:60px"></div>
-METRICS_HEREDOC
-)
+SNIPPET
 
-  local tmp
-  tmp=$(mktemp)
-  awk -v block="$metrics_block" '
+  awk -v snippet="$snippet" '
+    BEGIN { while((getline line < snippet) > 0) block = block "\n" line; close(snippet) }
     /<\/body>/ { print block; print; next }
     { print }
   ' "$htmlfile" > "$tmp" && mv "$tmp" "$htmlfile"
+  rm -f "$snippet"
 }
 
 wait_for_server() {
@@ -135,16 +133,19 @@ run_k6() {
   local name="$1"
   local port="$2"
   local label="$3"
-  local report="$REPORTS_DIR/${name}${BENCH_SLUG}_report.html"
-  local metrics_log="$REPORTS_DIR/${name}${BENCH_SLUG}_metrics.log"
-  local metrics_json="$REPORTS_DIR/${name}${BENCH_SLUG}_metrics.json"
+  local endpoint="$4"
+  local slug="_${endpoint#/}"
+
+  local report="$REPORTS_DIR/${name}${slug}_report.html"
+  local summary_json="$REPORTS_DIR/${name}${slug}_summary.json"
+  local metrics_log="$REPORTS_DIR/${name}${slug}_metrics.log"
+  local metrics_json="$REPORTS_DIR/${name}${slug}_metrics.json"
   local monitor_pid=""
 
   echo ""
   echo "========================================="
-  echo "  Benchmarking: $label"
-  echo "  Size: $BENCH_SIZE | Endpoint: $BENCH_ENDPOINT"
-  echo "  Target: http://localhost:$port${BENCH_ENDPOINT}"
+  echo "  Benchmarking: $label — $endpoint"
+  echo "  Target: http://localhost:$port${endpoint}"
   echo "========================================="
   echo ""
 
@@ -155,14 +156,14 @@ run_k6() {
   K6_WEB_DASHBOARD_EXPORT="$report" \
     k6 run "$ROOT_DIR/bench/bench-k6.js" \
       --env BASE_URL="http://localhost:$port" \
-      --env SIZE="$BENCH_SIZE" \
-      --env ENDPOINT="$BENCH_ENDPOINT" \
-      --tag "runtime=$name"
+      --env ENDPOINT="$endpoint" \
+      --env SUMMARY_EXPORT="$summary_json" \
+      --tag "runtime=$name" || true
 
   kill "$monitor_pid" 2>/dev/null || true
   wait "$monitor_pid" 2>/dev/null || true
-  compute_stats "$metrics_log" "$label" "$metrics_json"
-  inject_metrics_to_html "$report" "$metrics_json"
+  compute_stats "$metrics_log" "$label ($endpoint)" "$metrics_json"
+  inject_metrics_to_html "$report" "$metrics_json" "$label" "$endpoint"
 
   echo ""
   echo "$label report saved to: $report"
@@ -186,7 +187,7 @@ start_server() {
 }
 
 stop_latest() {
-  local pid="${PIDS[-1]}"
+  local pid="${PIDS[${#PIDS[@]}-1]}"
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   PIDS=("${PIDS[@]:0:${#PIDS[@]}-1}")
@@ -195,19 +196,28 @@ stop_latest() {
 echo "NapiBench — Node vs Bun API Benchmark"
 echo "======================================="
 echo "Runtime: $RUNTIME"
+echo "Endpoints: ${ENDPOINTS[*]}"
 echo ""
 
 start_fake_price
 
+for endpoint in "${ENDPOINTS[@]}"; do
+  SLUGS+=("_${endpoint#/}")
+done
+
 if [[ "$RUNTIME" == "node" || "$RUNTIME" == "all" ]]; then
   start_server "node" "$NODE_PORT" "Node.js server"
-  run_k6 "node" "$NODE_PORT" "Node.js"
+  for endpoint in "${ENDPOINTS[@]}"; do
+    run_k6 "node" "$NODE_PORT" "Node.js" "$endpoint"
+  done
   stop_latest
 fi
 
 if [[ "$RUNTIME" == "bun" || "$RUNTIME" == "all" ]]; then
   start_server "bun" "$BUN_PORT" "Bun server"
-  run_k6 "bun" "$BUN_PORT" "Bun"
+  for endpoint in "${ENDPOINTS[@]}"; do
+    run_k6 "bun" "$BUN_PORT" "Bun" "$endpoint"
+  done
   stop_latest
 fi
 
@@ -216,14 +226,22 @@ echo "  All benchmarks complete!"
 echo "========================================="
 echo ""
 echo "Reports:"
-if [[ "$RUNTIME" == "node" || "$RUNTIME" == "all" ]]; then
-  echo "  Node: $REPORTS_DIR/node${BENCH_SLUG}_report.html"
-fi
-if [[ "$RUNTIME" == "bun" || "$RUNTIME" == "all" ]]; then
-  echo "  Bun:  $REPORTS_DIR/bun${BENCH_SLUG}_report.html"
-fi
+for slug in "${SLUGS[@]}"; do
+  if [[ "$RUNTIME" == "node" || "$RUNTIME" == "all" ]]; then
+    echo "  Node: $REPORTS_DIR/node${slug}_report.html"
+  fi
+  if [[ "$RUNTIME" == "bun" || "$RUNTIME" == "all" ]]; then
+    echo "  Bun:  $REPORTS_DIR/bun${slug}_report.html"
+  fi
+done
 echo ""
 echo "Resource usage:"
 for result in "${RESULTS[@]}"; do
   echo "  $result"
 done
+
+if [[ "$RUNTIME" == "all" ]]; then
+  echo ""
+  echo ">>> Generating combined report..."
+  node "$ROOT_DIR/scripts/generate-combined-report.cjs" "$REPORTS_DIR" "${SLUGS[@]}"
+fi
