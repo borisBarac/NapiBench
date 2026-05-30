@@ -154,7 +154,7 @@ group("Full Pipeline", () => {
     const signals = calculateSignals(p, ma, rsi, macd, bb);
   });
   bench("Native - calculateAllFromRaw", () => {
-    JSON.parse(native.calculateAllFromRaw(oneYearFlat, 10, smaWindows));
+    JSON.parse(new TextDecoder().decode(native.calculateAllFromRaw(oneYearFlat, 10, smaWindows)));
   });
   bench("Native - calculateAllFromRawAsync", async () => {
     JSON.parse(new TextDecoder().decode(await native.calculateAllFromRawAsync(oneYearFlat, 10, smaWindows)));

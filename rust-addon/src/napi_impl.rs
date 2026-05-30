@@ -3,8 +3,9 @@ use napi_derive::napi;
 use serde::Serialize;
 
 use crate::indicators::{
-    calculate_bollinger_bands, calculate_macd, calculate_moving_averages, calculate_rsi,
-    BollingerEntry, MacdEntry, MaResult, RsiEntry,
+    calculate_bollinger_bands, calculate_macd as calc_macd,
+    calculate_moving_averages as calc_ma, calculate_rsi as calc_rsi, BollingerEntry, MacdEntry,
+    MaResult, RsiEntry,
 };
 use crate::signals::{calculate_signals, SignalEntry};
 use crate::summary::{calculate_summary, Summary};
@@ -46,12 +47,12 @@ fn do_calculate_all(prices: &[f64], sma_windows: &[u32]) -> AllResult {
 
     let ((moving_averages, rsi), (macd, bollinger_bands, summary)) = rayon::join(
         || {
-            let ma = calculate_moving_averages(prices, sma_windows, cutoff_years, &dates);
-            let rsi = calculate_rsi(prices, 14, cutoff_years, &dates);
+            let ma = calc_ma(prices, sma_windows, cutoff_years, &dates);
+            let rsi = calc_rsi(prices, 14, cutoff_years, &dates);
             (ma, rsi)
         },
         || {
-            let macd = calculate_macd(prices, 12, 26, 9, cutoff_years, &dates);
+            let macd = calc_macd(prices, 12, 26, 9, cutoff_years, &dates);
             let bb = calculate_bollinger_bands(prices, 20, cutoff_years, &dates);
             let summary = calculate_summary(prices, &dates);
             (macd, bb, summary)
@@ -76,45 +77,45 @@ fn do_calculate_all(prices: &[f64], sma_windows: &[u32]) -> AllResult {
 }
 
 #[napi]
-pub fn calculate_moving_averages_json(
+pub fn calculate_moving_averages(
     prices: Float64Array,
     sma_windows: Vec<u32>,
     cutoff_years: Option<u32>,
-) -> String {
+) -> Buffer {
     let cutoff_years = cutoff_years.unwrap_or(9);
     let dates = crate::utils::precompute_dates(&prices);
-    let result = calculate_moving_averages(&prices, &sma_windows, cutoff_years, &dates);
-    serde_json::to_string(&result).unwrap()
+    let result = calc_ma(&prices, &sma_windows, cutoff_years, &dates);
+    Buffer::from(serde_json::to_vec(&result).unwrap())
 }
 
 #[napi]
-pub fn calculate_rsi_json(
+pub fn calculate_rsi(
     prices: Float64Array,
     period: Option<u32>,
     cutoff_years: Option<u32>,
-) -> String {
+) -> Buffer {
     let period = period.unwrap_or(14);
     let cutoff_years = cutoff_years.unwrap_or(9);
     let dates = crate::utils::precompute_dates(&prices);
-    let result = calculate_rsi(&prices, period, cutoff_years, &dates);
-    serde_json::to_string(&result).unwrap()
+    let result = calc_rsi(&prices, period, cutoff_years, &dates);
+    Buffer::from(serde_json::to_vec(&result).unwrap())
 }
 
 #[napi]
-pub fn calculate_macd_json(
+pub fn calculate_macd(
     prices: Float64Array,
     fast: Option<u32>,
     slow: Option<u32>,
     signal: Option<u32>,
     cutoff_years: Option<u32>,
-) -> String {
+) -> Buffer {
     let fast = fast.unwrap_or(12);
     let slow = slow.unwrap_or(26);
     let signal = signal.unwrap_or(9);
     let cutoff_years = cutoff_years.unwrap_or(9);
     let dates = crate::utils::precompute_dates(&prices);
-    let result = calculate_macd(&prices, fast, slow, signal, cutoff_years, &dates);
-    serde_json::to_string(&result).unwrap()
+    let result = calc_macd(&prices, fast, slow, signal, cutoff_years, &dates);
+    Buffer::from(serde_json::to_vec(&result).unwrap())
 }
 
 #[napi]
@@ -128,9 +129,9 @@ pub fn expand_prices_flat(one_year_prices: Float64Array, years: Option<u32>) -> 
 pub fn calculate_all(
     prices: Float64Array,
     sma_windows: Vec<u32>,
-) -> String {
+) -> Buffer {
     let result = do_calculate_all(&prices, &sma_windows);
-    serde_json::to_string(&result).unwrap()
+    Buffer::from(serde_json::to_vec(&result).unwrap())
 }
 
 #[napi]
@@ -138,11 +139,11 @@ pub fn calculate_all_from_raw(
     one_year_prices: Float64Array,
     years: Option<u32>,
     sma_windows: Vec<u32>,
-) -> String {
+) -> Buffer {
     let years = years.unwrap_or(10) as usize;
     let prices = expand_prices(&one_year_prices, years);
     let result = do_calculate_all(&prices, &sma_windows);
-    serde_json::to_string(&result).unwrap()
+    Buffer::from(serde_json::to_vec(&result).unwrap())
 }
 
 #[napi]

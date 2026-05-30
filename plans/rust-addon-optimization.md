@@ -15,19 +15,19 @@ Decisions:
   - Removed `to_value()` → mutate → `to_vec()` pattern
   - Serialize directly: `serde_json::to_vec(&http_result).unwrap()`
 
-## Phase 2: Replace all `String` returns with `Buffer`
+## Phase 2: Replace all `String` returns with `Buffer` ✅
 
-Every napi function that currently returns `String` via `serde_json::to_string()` should instead return `Buffer` via `serde_json::to_vec()`. This skips V8's UTF-16 string conversion. JS side uses `JSON.parse(new TextDecoder().decode(buf))` or passes the buffer directly to `res.send()`.
+Every napi function that returned `String` via `serde_json::to_string()` now returns `Buffer` via `serde_json::to_vec()`. This skips V8's UTF-16 string conversion. JS side uses `JSON.parse(new TextDecoder().decode(buf))` or passes the buffer directly to `res.send()`.
 
-- [ ] **2.1** `calculate_moving_averages_json` → rename to `calculate_moving_averages`, return `Buffer`
-- [ ] **2.2** `calculate_rsi_json` → rename to `calculate_rsi`, return `Buffer`
-- [ ] **2.3** `calculate_macd_json` → rename to `calculate_macd`, return `Buffer`
-- [ ] **2.4** `calculate_all` → return `Buffer`
-- [ ] **2.5** `calculate_all_from_raw` → return `Buffer`
-- [ ] **2.6** `calculate_all_from_raw_http` → already returns `Buffer`, just fix per 1.1
-- [ ] **2.7** Update `server.js` `/price-rust` route to work with Buffer return
-- [ ] **2.8** Update `bench/benchmark-functions.js` — native benchmark should decode Buffer
-- [ ] **2.9** Update `tests/native.test.js` — decode Buffer before asserting
+- [x] **2.1** `calculate_moving_averages_json` → renamed to `calculate_moving_averages`, returns `Buffer`
+- [x] **2.2** `calculate_rsi_json` → renamed to `calculate_rsi`, returns `Buffer`
+- [x] **2.3** `calculate_macd_json` → renamed to `calculate_macd`, returns `Buffer`
+- [x] **2.4** `calculate_all` → returns `Buffer`
+- [x] **2.5** `calculate_all_from_raw` → returns `Buffer`
+- [x] **2.6** `calculate_all_from_raw_http` → already returned `Buffer` (fixed in Phase 1)
+- [x] **2.7** `server.js` `/price-rust` — already uses async variant returning Buffer, `res.type('json').send(buf)` works
+- [x] **2.8** `bench/benchmark-functions.js` — `calculateAllFromRaw` wrapped with `TextDecoder`
+- [x] **2.9** `tests/native.test.js` — added `decode()` helper, all native calls use it
 
 ## Phase 3: Eliminate internal String date allocations ✅
 
