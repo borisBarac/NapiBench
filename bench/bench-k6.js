@@ -54,3 +54,44 @@ export default function () {
     },
   });
 }
+
+export function handleSummary(data) {
+  const dur = data.metrics.http_req_duration;
+  const reqs = data.metrics.http_reqs;
+  const failed = data.metrics.http_req_failed;
+
+  const summary = {
+    test_config: {
+      size,
+      endpoint: __ENV.ENDPOINT || '/price',
+      target_rate: cfg.rate,
+      duration: cfg.duration,
+      base_url: baseUrl,
+    },
+    latency_ms: {
+      avg: dur.values.avg,
+      p95: dur.values['p(95)'],
+      p99: dur.values['p(99)'],
+      min: dur.values.min,
+      max: dur.values.max,
+      med: dur.values.med,
+    },
+    throughput: {
+      rps: reqs.values.rate,
+      total_requests: reqs.values.count,
+    },
+    errors: {
+      fail_rate: failed.values.rate,
+    },
+  };
+
+  const exportPath = __ENV.SUMMARY_EXPORT;
+  if (exportPath) {
+    return {
+      [exportPath]: JSON.stringify(summary, null, 2),
+      stdout: '',
+    };
+  }
+
+  return { stdout: JSON.stringify(summary, null, 2) };
+}

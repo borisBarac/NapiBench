@@ -136,6 +136,7 @@ run_k6() {
   local port="$2"
   local label="$3"
   local report="$REPORTS_DIR/${name}${BENCH_SLUG}_report.html"
+  local summary_json="$REPORTS_DIR/${name}${BENCH_SLUG}_summary.json"
   local metrics_log="$REPORTS_DIR/${name}${BENCH_SLUG}_metrics.log"
   local metrics_json="$REPORTS_DIR/${name}${BENCH_SLUG}_metrics.json"
   local monitor_pid=""
@@ -157,6 +158,7 @@ run_k6() {
       --env BASE_URL="http://localhost:$port" \
       --env SIZE="$BENCH_SIZE" \
       --env ENDPOINT="$BENCH_ENDPOINT" \
+      --env SUMMARY_EXPORT="$summary_json" \
       --tag "runtime=$name"
 
   kill "$monitor_pid" 2>/dev/null || true
@@ -227,3 +229,166 @@ echo "Resource usage:"
 for result in "${RESULTS[@]}"; do
   echo "  $result"
 done
+
+if [[ "$RUNTIME" == "all" ]]; then
+  echo ""
+  echo "Combined report:"
+  echo "  $REPORTS_DIR/combined_benchmark-k6${BENCH_SLUG}.html"
+  echo ""
+  echo ""
+  echo ">>> Generating combined report..."
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+
+    const reportsDir = '$REPORTS_DIR';
+    const benchSlug = '$BENCH_SLUG';
+
+    const nodeSummary = JSON.parse(fs.readFileSync(path.join(reportsDir, 'node' + benchSlug + '_summary.json'), 'utf-8'));
+    const bunSummary = JSON.parse(fs.readFileSync(path.join(reportsDir, 'bun' + benchSlug + '_summary.json'), 'utf-8'));
+    const nodeMetrics = JSON.parse(fs.readFileSync(path.join(reportsDir, 'node' + benchSlug + '_metrics.json'), 'utf-8'));
+    const bunMetrics = JSON.parse(fs.readFileSync(path.join(reportsDir, 'bun' + benchSlug + '_metrics.json'), 'utf-8'));
+
+    const nodeColor = '#68a063';
+    const bunColor = '#c17a2f';
+    const nodeLabel = 'Node.js';
+    const bunLabel = 'Bun';
+
+    const endpoint = nodeSummary.test_config.endpoint;
+    const size = nodeSummary.test_config.size;
+    const targetRate = nodeSummary.test_config.target_rate;
+    const duration = nodeSummary.test_config.duration;
+
+    function formatMs(ms) {
+      if (ms < 1) return ms.toFixed(3) + ' ms';
+      if (ms < 1000) return ms.toFixed(2) + ' ms';
+      return (ms / 1000).toFixed(2) + ' s';
+    }
+
+    function renderMetricSection(title, nodeVal, bunVal, unit, lowerIsBetter) {
+      const maxVal = Math.max(nodeVal, bunVal);
+      const minVal = Math.min(Math.min(nodeVal, bunVal), maxVal * 0.01);
+      const range = maxVal - minVal || maxVal || 1;
+      const nodePct = lowerIsBetter
+        ? ((1 - (nodeVal - minVal) / range) * 100).toFixed(1)
+        : ((nodeVal / maxVal) * 100).toFixed(1);
+      const bunPct = lowerIsBetter
+        ? ((1 - (bunVal - minVal) / range) * 100).toFixed(1)
+        : ((bunVal / maxVal) * 100).toFixed(1);
+
+      const nodeWins = lowerIsBetter ? nodeVal <= bunVal : nodeVal >= bunVal;
+      const bunWins = lowerIsBetter ? bunVal <= nodeVal : bunVal >= nodeVal;
+      const winner = nodeWins ? nodeLabel : bunLabel;
+      const winnerVal = nodeWins ? nodeVal : bunVal;
+      const loserVal = nodeWins ? bunVal : nodeVal;
+      const ratio = loserVal > 0 ? (loserVal / winnerVal).toFixed(2) : 'N/A';
+      const comparison = lowerIsBetter
+        ? winner + ' is <strong>' + ratio + 'x</strong> faster'
+        : winner + ' handles <strong>' + ratio + 'x</strong> more requests';
+
+      return \`
+        <div class=\"suite\">
+          <h2>\${title}</h2>
+          <div class=\"bar-row\">
+            <div class=\"bar-label\">
+              <span class=\"badge\" style=\"background:\${nodeColor}\">\${nodeLabel}</span>
+            </div>
+            <div class=\"bar-track\">
+              <div class=\"bar-fill\${nodeWins ? ' winner-bar' : ''}\" style=\"width:\${nodePct}%;background:\${nodeColor}\">
+                <span class=\"bar-value\">\${nodeVal.toFixed(2)} \${unit}</span>
+              </div>
+            </div>
+          </div>
+          <div class=\"bar-row\">
+            <div class=\"bar-label\">
+              <span class=\"badge\" style=\"background:\${bunColor}\">\${bunLabel}</span>
+            </div>
+            <div class=\"bar-track\">
+              <div class=\"bar-fill\${bunWins ? ' winner-bar' : ''}\" style=\"width:\${bunPct}%;background:\${bunColor}\">
+                <span class=\"bar-value\">\${bunVal.toFixed(2)} \${unit}</span>
+              </div>
+            </div>
+          </div>
+          <p class=\"winner\">\${comparison}</p>
+        </div>\`;
+    }
+
+    function renderResourceSection(title, nodeVal, bunVal, unit) {
+      return renderMetricSection(title, nodeVal, bunVal, unit, true);
+    }
+
+    const latencySection = renderMetricSection('Average Latency', nodeSummary.latency_ms.avg, bunSummary.latency_ms.avg, 'ms', true);
+    const p95Section = renderMetricSection('P95 Latency', nodeSummary.latency_ms.p95, bunSummary.latency_ms.p95, 'ms', true);
+    const p99Section = renderMetricSection('P99 Latency', nodeSummary.latency_ms.p99, bunSummary.latency_ms.p99, 'ms', true);
+    const rpsSection = renderMetricSection('Requests/sec', nodeSummary.throughput.rps, bunSummary.throughput.rps, 'req/s', false);
+    const errorSection = renderMetricSection('Error Rate', nodeSummary.errors.fail_rate * 100, bunSummary.errors.fail_rate * 100, '%', true);
+    const rssSection = renderResourceSection('Peak RSS', nodeMetrics.peak_rss_mb, bunMetrics.peak_rss_mb, 'MB');
+    const cpuSection = renderResourceSection('Avg CPU', nodeMetrics.avg_cpu_pct, bunMetrics.avg_cpu_pct, '%');
+
+    const html = \`<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+<meta charset=\"UTF-8\">
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+<title>NapiBench — K6 HTTP Benchmark</title>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b; --border: #e2e8f0; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --border: #334155; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 2rem; }
+  h1 { text-align: center; margin-bottom: 0.5rem; }
+  .subtitle { text-align: center; color: var(--muted); margin-bottom: 0.5rem; }
+  .config { text-align: center; color: var(--muted); margin-bottom: 2rem; font-size: 0.85rem; }
+  .legend { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 2rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; }
+  .legend-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .section-title { text-align: center; font-size: 1.2rem; margin: 2rem 0 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 0.85rem; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; max-width: 1200px; margin: 0 auto 1.5rem; }
+  .suite { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+  .suite h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+  .bar-row { margin-bottom: 0.75rem; }
+  .bar-label { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
+  .badge { color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .bar-track { background: var(--border); border-radius: 6px; height: 32px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; min-width: 0; transition: width 0.6s ease; }
+  .bar-fill.winner-bar { box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
+  .bar-value { color: #fff; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+  .winner { margin-top: 0.75rem; font-size: 0.9rem; color: var(--muted); }
+  .winner strong { color: var(--text); }
+  .footer { text-align: center; margin-top: 2rem; font-size: 0.8rem; color: var(--muted); }
+  .footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>NapiBench — K6 HTTP Benchmark</h1>
+  <p class=\"subtitle\">\${nodeLabel} vs \${bunLabel} — API Performance Comparison</p>
+  <p class=\"config\">Endpoint: \${endpoint} | Size: \${size} | Target: \${targetRate} req/s | Duration: \${duration}</p>
+  <div class=\"legend\">
+    <div class=\"legend-item\"><span class=\"legend-dot\" style=\"background:\${nodeColor}\"></span> \${nodeLabel}</div>
+    <div class=\"legend-item\"><span class=\"legend-dot\" style=\"background:\${bunColor}\"></span> \${bunLabel}</div>
+  </div>
+  <div class=\"section-title\">Latency</div>
+  <div class=\"metrics-grid\">
+    \${latencySection}
+    \${p95Section}
+    \${p99Section}
+  </div>
+  <div class=\"section-title\">Throughput &amp; Errors</div>
+  <div class=\"metrics-grid\">
+    \${rpsSection}
+    \${errorSection}
+  </div>
+  <div class=\"section-title\">Server Resources</div>
+  <div class=\"metrics-grid\">
+    \${rssSection}
+    \${cpuSection}
+  </div>
+  <p class=\"footer\">Generated with <a href=\"https://k6.io\">k6</a></p>
+</body>
+</html>\`;
+
+    const outPath = path.join(reportsDir, 'combined_benchmark-k6' + benchSlug + '.html');
+    fs.writeFileSync(outPath, html);
+    console.log('Combined report: ' + outPath);
+  "
+fi
