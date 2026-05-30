@@ -6,7 +6,7 @@ import {
   calculateBollingerBands,
   calculateSummary,
   calculateSignals,
-} from "./indicators.js";
+} from "../src/indicators.js";
 
 function makePrices(values) {
   const base = new Date("2024-01-01").getTime();

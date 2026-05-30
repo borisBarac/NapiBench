@@ -4,10 +4,10 @@ import {
   calculateMovingAverages,
   calculateRSI,
   calculateMACD,
-} from "./indicators.js";
+} from "../src/indicators.js";
 
 const require = createRequire(import.meta.url);
-const native = require("./napibench-native.node");
+const native = require("../napibench-native.node");
 
 function makePrices(values) {
   const base = new Date("2024-01-01").getTime();

@@ -4,7 +4,7 @@ import { calculateMovingAverages, calculateRSI, calculateMACD, calculateBollinge
 import { PRICE_SERVER_PORT, APP_SERVER_PORT } from "./ports.config.js";
 
 const require = createRequire(import.meta.url);
-const native = require("./napibench-native.node");
+const native = require("../napibench-native.node");
 
 export function getTimeRange() {
   const to = Math.floor(Date.now() / 1000);

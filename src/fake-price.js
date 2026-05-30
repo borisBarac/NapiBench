@@ -1,4 +1,4 @@
-import data from "./prices.json";
+import data from "../prices.json";
 import { PRICE_SERVER_PORT } from "./ports.config.js";
 
 Bun.serve({

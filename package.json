@@ -1,6 +1,6 @@
 {
   "name": "napibench",
-  "module": "index.js",
+  "module": "src/server.js",
   "type": "module",
   "private": true,
   "devDependencies": {
@@ -14,8 +14,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "build:native": "napi build --release --manifest-path rust-addon/Cargo.toml --package-json-path package.json --output-dir .",
-    "bench-function": "node --expose-gc --allow-natives-syntax benchmark-functions.js"
+    "build:native": "napi build --release --manifest-path rust-addon/Cargo.toml --package-json-path package.json --output-dir ."
   },
   "napi": {
     "binaryName": "napibench-native"

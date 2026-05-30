@@ -126,7 +126,7 @@ wait_for_server() {
 
 start_fake_price() {
   echo "Starting fake price server on port $FAKE_PORT..."
-  bun run "$ROOT_DIR/fake_price.js" &
+  bun run "$ROOT_DIR/src/fake-price.js" &
   PIDS+=($!)
   wait_for_server "http://localhost:$FAKE_PORT/prices" "Fake price server"
 }
@@ -153,7 +153,7 @@ run_k6() {
 
   K6_WEB_DASHBOARD=true \
   K6_WEB_DASHBOARD_EXPORT="$report" \
-    k6 run "$ROOT_DIR/k6/bench.js" \
+    k6 run "$ROOT_DIR/bench/bench-k6.js" \
       --env BASE_URL="http://localhost:$port" \
       --env SIZE="$BENCH_SIZE" \
       --env ENDPOINT="$BENCH_ENDPOINT" \
@@ -176,9 +176,9 @@ start_server() {
 
   echo "Starting $name on port $port..."
   if [[ "$runtime" == "node" ]]; then
-    PORT="$port" node "$ROOT_DIR/index.js" &
+    PORT="$port" node "$ROOT_DIR/src/server.js" &
   else
-    PORT="$port" bun run "$ROOT_DIR/index.js" &
+    PORT="$port" bun run "$ROOT_DIR/src/server.js" &
   fi
   SERVER_PID=$!
   PIDS+=($SERVER_PID)

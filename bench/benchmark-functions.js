@@ -1,9 +1,17 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { run, bench, group } from "mitata";
+import {
+  calculateMovingAverages,
+  calculateRSI,
+  calculateMACD,
+  calculateBollingerBands,
+  calculateSummary,
+  calculateSignals,
+} from "../src/indicators.js";
 
 const require = createRequire(import.meta.url);
-const native = require("./napibench-native.node");
+const native = require("../napibench-native.node");
 
 function detectRuntime() {
   if (typeof Bun !== "undefined") return "Bun";
@@ -124,13 +132,10 @@ function generateHtmlReport(allResults, runtime) {
 </body>
 </html>`;
 
-  mkdirSync("reports", { recursive: true });
-  writeFileSync(`reports/${runtime.toLowerCase().replace(/ /g, "-")}_benchmark-functions.html`, html);
-  console.log(`\nHTML report generated: reports/${runtime.toLowerCase().replace(/ /g, "-")}_benchmark-functions.html`);
 }
 
 const { prices: oneYearPrices } = JSON.parse(
-  readFileSync(new URL("./prices.json", import.meta.url), "utf-8")
+  readFileSync(new URL("../prices.json", import.meta.url), "utf-8")
 );
 
 const smaWindows = [25, 50, 100, 200];
@@ -139,14 +144,14 @@ const oneYearFlat = flattenOneYear(oneYearPrices);
 console.log(`Benchmarking Full Pipeline with ${oneYearPrices.length * 10} price points (10 years)\n`);
 
 group("Full Pipeline", () => {
-  bench("JS - expand + flatten + calculateAll", () => {
+  bench("JS - expand + all indicators (JS)", () => {
     const p = expandPrices(oneYearPrices, 10);
-    const f = new Float64Array(p.length * 2);
-    for (let i = 0; i < p.length; i++) {
-      f[i * 2] = p[i][0];
-      f[i * 2 + 1] = p[i][1];
-    }
-    native.calculateAll(f, smaWindows);
+    const ma = calculateMovingAverages(p, smaWindows);
+    const rsi = calculateRSI(p);
+    const macd = calculateMACD(p);
+    const bb = calculateBollingerBands(p);
+    const summary = calculateSummary(p);
+    const signals = calculateSignals(p, ma, rsi, macd, bb);
   });
   bench("Native - calculateAllFromRaw", () => {
     native.calculateAllFromRaw(oneYearFlat, 10, smaWindows);
@@ -173,5 +178,10 @@ const allResults = Object.entries(groupsByName).map(([name, results]) => ({
   name,
   results,
 }));
+
+const jsonResultsPath = `reports/${runtime.toLowerCase().replace(/ /g, "-")}-bench-results.json`;
+mkdirSync("reports", { recursive: true });
+writeFileSync(jsonResultsPath, JSON.stringify(allResults, null, 2));
+console.log(`Results JSON saved: ${jsonResultsPath}`);
 
 generateHtmlReport(allResults, runtime);

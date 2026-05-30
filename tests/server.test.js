@@ -1,13 +1,13 @@
 import { test, expect, beforeAll, afterAll } from "vitest";
-import { createServer } from "./index.js";
-import { PRICE_SERVER_PORT } from "./ports.config.js";
+import { createServer } from "../src/server.js";
+import { PRICE_SERVER_PORT } from "../src/ports.config.js";
 import http from "node:http";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const priceData = JSON.parse(fs.readFileSync(join(__dirname, "prices.json"), "utf-8"));
+const priceData = JSON.parse(fs.readFileSync(join(__dirname, "..", "prices.json"), "utf-8"));
 
 let fakeServer;
 let app;
