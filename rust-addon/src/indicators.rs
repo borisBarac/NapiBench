@@ -1,3 +1,6 @@
+#[cfg(feature = "rayon")]
+use rayon::join as rayon_join;
+
 use serde::Serialize;
 
 use crate::utils::{format_date, round2};
@@ -232,8 +235,13 @@ pub fn calculate_macd(
 
     let close_prices: Vec<f64> = (0..num_points).map(|i| prices[i * 2 + 1]).collect();
 
-    let fast_ema = ema(&close_prices, fast);
-    let slow_ema = ema(&close_prices, slow);
+    #[cfg(feature = "rayon")]
+    let (fast_ema, slow_ema) = rayon_join(
+        || ema(&close_prices, fast),
+        || ema(&close_prices, slow),
+    );
+    #[cfg(not(feature = "rayon"))]
+    let (fast_ema, slow_ema) = (ema(&close_prices, fast), ema(&close_prices, slow));
 
     let mut macd_line = Vec::new();
     for i in 0..fast_ema.len() {

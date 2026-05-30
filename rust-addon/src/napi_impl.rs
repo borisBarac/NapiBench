@@ -3,12 +3,11 @@ use napi_derive::napi;
 use serde::Serialize;
 
 use crate::indicators::{
-    calculate_bollinger_bands, calculate_macd as calc_macd,
-    calculate_moving_averages as calc_ma, calculate_rsi as calc_rsi, BollingerEntry, MacdEntry,
-    MaResult, RsiEntry,
+    calculate_macd as calc_macd, calculate_moving_averages as calc_ma, calculate_rsi as calc_rsi,
+    BollingerEntry, MacdEntry, MaResult, RsiEntry,
 };
 use crate::signals::{calculate_signals, SignalEntry};
-use crate::summary::{calculate_summary, Summary};
+use crate::summary::Summary;
 
 #[derive(Serialize)]
 struct AllResult {
@@ -45,18 +44,24 @@ fn do_calculate_all(prices: &[f64], sma_windows: &[u32]) -> AllResult {
     let cutoff_years: u32 = 9;
     let dates = crate::utils::precompute_dates(prices);
 
-    let ((moving_averages, rsi), (macd, bollinger_bands, summary)) = rayon::join(
+    let (((moving_averages, rsi), (macd, bollinger_bands)), summary) = rayon::join(
         || {
-            let ma = calc_ma(prices, sma_windows, cutoff_years, &dates);
-            let rsi = calc_rsi(prices, 14, cutoff_years, &dates);
-            (ma, rsi)
+            rayon::join(
+                || {
+                    rayon::join(
+                        || crate::indicators::calculate_moving_averages(prices, sma_windows, cutoff_years, &dates),
+                        || crate::indicators::calculate_rsi(prices, 14, cutoff_years, &dates),
+                    )
+                },
+                || {
+                    rayon::join(
+                        || crate::indicators::calculate_macd(prices, 12, 26, 9, cutoff_years, &dates),
+                        || crate::indicators::calculate_bollinger_bands(prices, 20, cutoff_years, &dates),
+                    )
+                },
+            )
         },
-        || {
-            let macd = calc_macd(prices, 12, 26, 9, cutoff_years, &dates);
-            let bb = calculate_bollinger_bands(prices, 20, cutoff_years, &dates);
-            let summary = calculate_summary(prices, &dates);
-            (macd, bb, summary)
-        },
+        || crate::summary::calculate_summary(prices, &dates),
     );
 
     let signals = calculate_signals(

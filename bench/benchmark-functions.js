@@ -141,11 +141,11 @@ const { prices: oneYearPrices } = JSON.parse(
 const smaWindows = [25, 50, 100, 200];
 const oneYearFlat = flattenOneYear(oneYearPrices);
 
-console.log(`Benchmarking Full Pipeline with ${oneYearPrices.length * 10} price points (10 years)\n`);
+console.log(`Benchmarking Full Pipeline with ${oneYearPrices.length * 1000} price points (1000 years)\n`);
 
 group("Full Pipeline", () => {
   bench("JS - expand + all indicators (JS)", () => {
-    const p = expandPrices(oneYearPrices, 10);
+    const p = expandPrices(oneYearPrices, 1000);
     const ma = calculateMovingAverages(p, smaWindows);
     const rsi = calculateRSI(p);
     const macd = calculateMACD(p);
@@ -154,10 +154,10 @@ group("Full Pipeline", () => {
     const signals = calculateSignals(p, ma, rsi, macd, bb);
   });
   bench("Native - calculateAllFromRaw", () => {
-    JSON.parse(new TextDecoder().decode(native.calculateAllFromRaw(oneYearFlat, 10, smaWindows)));
+    JSON.parse(new TextDecoder().decode(native.calculateAllFromRaw(oneYearFlat, 1000, smaWindows)));
   });
   bench("Native - calculateAllFromRawAsync", async () => {
-    JSON.parse(new TextDecoder().decode(await native.calculateAllFromRawAsync(oneYearFlat, 10, smaWindows)));
+    JSON.parse(new TextDecoder().decode(await native.calculateAllFromRawAsync(oneYearFlat, 1000, smaWindows)));
   });
 });
 
