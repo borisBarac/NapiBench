@@ -17,6 +17,15 @@ PIDS=()
 SERVER_PID=""
 RESULTS=()
 
+BENCH_SIZE="${SIZE:-s}"
+BENCH_ENDPOINT="${ENDPOINT:-/price}"
+
+endpoint_suffix=""
+if [[ "$BENCH_ENDPOINT" != "/price" ]]; then
+  endpoint_suffix="_${BENCH_ENDPOINT#/price-}"
+fi
+BENCH_SLUG="_${BENCH_SIZE}${endpoint_suffix}"
+
 cleanup() {
   echo ""
   echo "Stopping background processes..."
@@ -43,9 +52,11 @@ monitor_process() {
 compute_stats() {
   local logfile=$1
   local label=$2
+  local jsonfile=$3
 
   if [[ ! -s "$logfile" ]]; then
     RESULTS+=("$label  — no data")
+    echo '{"peak_rss_mb":0,"avg_cpu_pct":0,"max_cpu_pct":0}' > "$jsonfile"
     return
   fi
 
@@ -56,7 +67,41 @@ compute_stats() {
   max_cpu=$(awk '{print $2}' "$logfile" | sort -n | tail -1)
   max_cpu=$(printf "%.1f" "$max_cpu")
 
+  echo "{\"peak_rss_mb\":$peak_rss,\"avg_cpu_pct\":$avg_cpu,\"max_cpu_pct\":$max_cpu}" > "$jsonfile"
   RESULTS+=("$label  — Peak RSS: ${peak_rss} MB | Avg CPU: ${avg_cpu}% | Max CPU: ${max_cpu}%")
+}
+
+inject_metrics_to_html() {
+  local htmlfile=$1
+  local jsonfile=$2
+
+  if [[ ! -f "$htmlfile" || ! -f "$jsonfile" ]]; then
+    return
+  fi
+
+  local peak_rss avg_cpu max_cpu
+  peak_rss=$(awk -F'"peak_rss_mb":' '{split($2,a,","); print a[1]}' "$jsonfile")
+  avg_cpu=$(awk -F'"avg_cpu_pct":' '{split($2,a,","); print a[1]}' "$jsonfile")
+  max_cpu=$(awk -F'"max_cpu_pct":' '{split($2,a,"}"); print a[1]}' "$jsonfile")
+
+  local metrics_block
+  metrics_block=$(cat <<METRICS_HEREDOC
+<div style="position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:#e0e0e0;padding:16px 24px;font-family:system-ui,-apple-system,sans-serif;border-top:2px solid #6c63ff;display:flex;gap:32px;align-items:center;z-index:9999">
+  <span style="font-size:14px;font-weight:700;color:#6c63ff;text-transform:uppercase;letter-spacing:1px">Server Resources</span>
+  <span style="font-size:14px">Peak RSS: <strong>${peak_rss} MB</strong></span>
+  <span style="font-size:14px">Avg CPU: <strong>${avg_cpu}%</strong></span>
+  <span style="font-size:14px">Max CPU: <strong>${max_cpu}%</strong></span>
+</div>
+<div style="height:60px"></div>
+METRICS_HEREDOC
+)
+
+  local tmp
+  tmp=$(mktemp)
+  awk -v block="$metrics_block" '
+    /<\/body>/ { print block; print; next }
+    { print }
+  ' "$htmlfile" > "$tmp" && mv "$tmp" "$htmlfile"
 }
 
 wait_for_server() {
@@ -90,14 +135,16 @@ run_k6() {
   local name="$1"
   local port="$2"
   local label="$3"
-  local report="$REPORTS_DIR/${name}_report.html"
-  local metrics_log="$REPORTS_DIR/${name}_metrics.log"
+  local report="$REPORTS_DIR/${name}${BENCH_SLUG}_report.html"
+  local metrics_log="$REPORTS_DIR/${name}${BENCH_SLUG}_metrics.log"
+  local metrics_json="$REPORTS_DIR/${name}${BENCH_SLUG}_metrics.json"
   local monitor_pid=""
 
   echo ""
   echo "========================================="
   echo "  Benchmarking: $label"
-  echo "  Target: http://localhost:$port/price"
+  echo "  Size: $BENCH_SIZE | Endpoint: $BENCH_ENDPOINT"
+  echo "  Target: http://localhost:$port${BENCH_ENDPOINT}"
   echo "========================================="
   echo ""
 
@@ -108,11 +155,14 @@ run_k6() {
   K6_WEB_DASHBOARD_EXPORT="$report" \
     k6 run "$ROOT_DIR/k6/bench.js" \
       --env BASE_URL="http://localhost:$port" \
+      --env SIZE="$BENCH_SIZE" \
+      --env ENDPOINT="$BENCH_ENDPOINT" \
       --tag "runtime=$name"
 
   kill "$monitor_pid" 2>/dev/null || true
   wait "$monitor_pid" 2>/dev/null || true
-  compute_stats "$metrics_log" "$label"
+  compute_stats "$metrics_log" "$label" "$metrics_json"
+  inject_metrics_to_html "$report" "$metrics_json"
 
   echo ""
   echo "$label report saved to: $report"
@@ -167,10 +217,10 @@ echo "========================================="
 echo ""
 echo "Reports:"
 if [[ "$RUNTIME" == "node" || "$RUNTIME" == "all" ]]; then
-  echo "  Node: $REPORTS_DIR/node_report.html"
+  echo "  Node: $REPORTS_DIR/node${BENCH_SLUG}_report.html"
 fi
 if [[ "$RUNTIME" == "bun" || "$RUNTIME" == "all" ]]; then
-  echo "  Bun:  $REPORTS_DIR/bun_report.html"
+  echo "  Bun:  $REPORTS_DIR/bun${BENCH_SLUG}_report.html"
 fi
 echo ""
 echo "Resource usage:"

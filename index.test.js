@@ -1,9 +1,40 @@
-import { test, expect } from "vitest";
+import { test, expect, beforeAll, afterAll } from "vitest";
 import { createServer } from "./index.js";
+import { PRICE_SERVER_PORT } from "./ports.config.js";
+import http from "node:http";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const priceData = JSON.parse(fs.readFileSync(join(__dirname, "prices.json"), "utf-8"));
+
+let fakeServer;
+let app;
+
+beforeAll(async () => {
+  await new Promise((resolve) => {
+    fakeServer = http.createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost:${PRICE_SERVER_PORT}`);
+      if (url.pathname === "/prices") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(priceData));
+      } else {
+        res.writeHead(404);
+        res.end("Not found");
+      }
+    });
+    fakeServer.listen(PRICE_SERVER_PORT, resolve);
+  });
+  app = createServer(3033);
+});
+
+afterAll(() => {
+  app.close();
+  fakeServer.close();
+});
 
 test("GET /price returns moving averages and measures time", async () => {
-  const server = createServer(3033);
-
   const start = performance.now();
   const res = await fetch("http://localhost:3033/price");
   const elapsed = performance.now() - start;
@@ -41,6 +72,4 @@ test("GET /price returns moving averages and measures time", async () => {
   expect(body.signals[0].indicators).toBeDefined();
   expect(body.signals[0].composite_score).toBeDefined();
   expect(["buy", "sell", "hold"]).toContain(body.signals[0].recommendation);
-
-  server.close();
 });

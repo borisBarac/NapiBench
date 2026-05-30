@@ -121,6 +121,32 @@ export function calculateBollingerBands(prices, period = 20, cutoffYears = 9) {
   return results;
 }
 
+export function expandPrices(oneYearPrices, years = 10) {
+  const yearMs = 365 * 24 * 3600 * 1000;
+  const prices = [];
+  for (let y = years - 1; y >= 0; y--) {
+    for (const [ts, p] of oneYearPrices) {
+      prices.push([ts - y * yearMs, p]);
+    }
+  }
+  return prices;
+}
+
+export function expandPricesFlat(oneYearPrices, years = 10) {
+  const yearMs = 365 * 24 * 3600 * 1000;
+  const n = oneYearPrices.length;
+  const out = new Float64Array(n * years * 2);
+  let k = 0;
+  for (let y = years - 1; y >= 0; y--) {
+    const offset = y * yearMs;
+    for (let i = 0; i < n; i++) {
+      out[k++] = oneYearPrices[i][0] - offset;
+      out[k++] = oneYearPrices[i][1];
+    }
+  }
+  return out;
+}
+
 function round2(v) {
   return Math.round(v * 100) / 100;
 }

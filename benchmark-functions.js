@@ -1,14 +1,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import {
-  calculateMovingAverages,
-  calculateRSI,
-  calculateMACD,
-} from "./indicators.js";
 import { run, bench, group } from "mitata";
 
 const require = createRequire(import.meta.url);
 const native = require("./napibench-native.node");
+
+function detectRuntime() {
+  if (typeof Bun !== "undefined") return "Bun";
+  if (typeof process !== "undefined" && process.versions?.node) return "Node.js";
+  if (typeof window !== "undefined") return "Browser";
+  return "Unknown";
+}
+
+const runtime = detectRuntime();
 
 function expandPrices(oneYearPrices, years = 10) {
   const yearMs = 365 * 24 * 3600 * 1000;
@@ -21,6 +25,16 @@ function expandPrices(oneYearPrices, years = 10) {
   return prices;
 }
 
+function flattenOneYear(oneYearPrices) {
+  const n = oneYearPrices.length;
+  const out = new Float64Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    out[i * 2] = oneYearPrices[i][0];
+    out[i * 2 + 1] = oneYearPrices[i][1];
+  }
+  return out;
+}
+
 function formatNs(ns) {
   if (ns < 1_000) return `${ns.toFixed(2)} ns`;
   if (ns < 1_000_000) return `${(ns / 1_000).toFixed(2)} µs`;
@@ -28,7 +42,7 @@ function formatNs(ns) {
   return `${(ns / 1_000_000_000).toFixed(2)} s`;
 }
 
-function generateHtmlReport(allResults) {
+function generateHtmlReport(allResults, runtime) {
   const suites = allResults.map(({ name, results }) => {
     const maxOps = Math.max(...results.map((r) => r.opsSec));
     const bars = results
@@ -71,7 +85,7 @@ function generateHtmlReport(allResults) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NapiBench - JS vs Native</title>
+<title>NapiBench - ${runtime} - JS vs Native</title>
 <style>
   :root { --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b; --border: #e2e8f0; }
   @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --border: #334155; } }
@@ -99,7 +113,7 @@ function generateHtmlReport(allResults) {
 </style>
 </head>
 <body>
-  <h1>NapiBench</h1>
+  <h1>NapiBench - ${runtime}</h1>
   <p class="subtitle">JavaScript vs Native (Rust/N-API) Performance Comparison</p>
   <div class="legend">
     <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span> JavaScript</div>
@@ -110,49 +124,31 @@ function generateHtmlReport(allResults) {
 </body>
 </html>`;
 
-  writeFileSync("reports/benchmark-functions.html", html);
-  console.log("\nHTML report generated: reports/benchmark-functions.html");
+  writeFileSync(`reports/${runtime.toLowerCase().replace(/ /g, "-")}_benchmark-functions.html`, html);
+  console.log(`\nHTML report generated: reports/${runtime.toLowerCase().replace(/ /g, "-")}_benchmark-functions.html`);
 }
 
 const { prices: oneYearPrices } = JSON.parse(
   readFileSync(new URL("./prices.json", import.meta.url), "utf-8")
 );
 
-const prices = expandPrices(oneYearPrices, 10);
 const smaWindows = [25, 50, 100, 200];
+const oneYearFlat = flattenOneYear(oneYearPrices);
 
-const flatPrices = new Float64Array(prices.length * 2);
-for (let i = 0; i < prices.length; i++) {
-  flatPrices[i * 2] = prices[i][0];
-  flatPrices[i * 2 + 1] = prices[i][1];
-}
+console.log(`Benchmarking Full Pipeline with ${oneYearPrices.length * 10} price points (10 years)\n`);
 
-console.log(`Benchmarking with ${prices.length} price points (10 years)\n`);
-
-group("Moving Averages", () => {
-  bench("JS - calculateMovingAverages", () => {
-    calculateMovingAverages(prices, smaWindows);
+group("Full Pipeline", () => {
+  bench("JS - expand + flatten + calculateAll", () => {
+    const p = expandPrices(oneYearPrices, 10);
+    const f = new Float64Array(p.length * 2);
+    for (let i = 0; i < p.length; i++) {
+      f[i * 2] = p[i][0];
+      f[i * 2 + 1] = p[i][1];
+    }
+    native.calculateAll(f, smaWindows);
   });
-  bench("Native - calculateMovingAveragesJson", () => {
-    native.calculateMovingAveragesJson(flatPrices, smaWindows);
-  });
-});
-
-group("RSI", () => {
-  bench("JS - calculateRSI", () => {
-    calculateRSI(prices, 14);
-  });
-  bench("Native - calculateRsiJson", () => {
-    native.calculateRsiJson(flatPrices, 14);
-  });
-});
-
-group("MACD", () => {
-  bench("JS - calculateMACD", () => {
-    calculateMACD(prices, 12, 26, 9);
-  });
-  bench("Native - calculateMacdJson", () => {
-    native.calculateMacdJson(flatPrices, 12, 26, 9);
+  bench("Native - calculateAllFromRaw", () => {
+    native.calculateAllFromRaw(oneYearFlat, 10, smaWindows);
   });
 });
 
@@ -177,4 +173,4 @@ const allResults = Object.entries(groupsByName).map(([name, results]) => ({
   results,
 }));
 
-generateHtmlReport(allResults);
+generateHtmlReport(allResults, runtime);

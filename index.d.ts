@@ -2,8 +2,12 @@
 /* eslint-disable */
 export declare function calculateAll(prices: Float64Array, smaWindows: Array<number>): unknown
 
+export declare function calculateAllFromRaw(oneYearPrices: Float64Array, years: number | undefined | null, smaWindows: Array<number>): unknown
+
 export declare function calculateMacdJson(prices: Float64Array, fast?: number | undefined | null, slow?: number | undefined | null, signal?: number | undefined | null, cutoffYears?: number | undefined | null): string
 
 export declare function calculateMovingAveragesJson(prices: Float64Array, smaWindows: Array<number>, cutoffYears?: number | undefined | null): string
 
 export declare function calculateRsiJson(prices: Float64Array, period?: number | undefined | null, cutoffYears?: number | undefined | null): string
+
+export declare function expandPricesFlat(oneYearPrices: Float64Array, years?: number | undefined | null): Float64Array

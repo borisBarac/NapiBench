@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import express from "express";
-import { calculateMovingAverages, calculateRSI, calculateMACD, calculateBollingerBands, calculateSummary, calculateSignals } from "./indicators.js";
+import { calculateMovingAverages, calculateRSI, calculateMACD, calculateBollingerBands, calculateSummary, calculateSignals, expandPrices, expandPricesFlat } from "./indicators.js";
 import { PRICE_SERVER_PORT, APP_SERVER_PORT } from "./ports.config.js";
 
 const require = createRequire(import.meta.url);
@@ -12,16 +12,7 @@ export function getTimeRange() {
   return { from, to };
 }
 
-export function expandPrices(oneYearPrices, years = 10) {
-  const yearMs = 365 * 24 * 3600 * 1000;
-  const prices = [];
-  for (let y = years - 1; y >= 0; y--) {
-    for (const [ts, p] of oneYearPrices) {
-      prices.push([ts - y * yearMs, p]);
-    }
-  }
-  return prices;
-}
+export { expandPrices, expandPricesFlat };
 
 export function createServer(port = APP_SERVER_PORT) {
   const app = express();
@@ -64,15 +55,15 @@ export function createServer(port = APP_SERVER_PORT) {
       }
 
       const body = await apiRes.json();
-      const prices = expandPrices(body.prices);
-      const flatPrices = new Float64Array(prices.length * 2);
-      for (let i = 0; i < prices.length; i++) {
-        flatPrices[i * 2] = prices[i][0];
-        flatPrices[i * 2 + 1] = prices[i][1];
+      const n = body.prices.length;
+      const oneYearFlat = new Float64Array(n * 2);
+      for (let i = 0; i < n; i++) {
+        oneYearFlat[i * 2] = body.prices[i][0];
+        oneYearFlat[i * 2 + 1] = body.prices[i][1];
       }
-      const rustResult = native.calculateAll(flatPrices, [25, 50, 100, 200]);
+      const rustResult = native.calculateAllFromRaw(oneYearFlat, 10, [25, 50, 100, 200]);
 
-      res.json({ data_points: prices.length, ...rustResult });
+      res.json({ data_points: n * 10, ...rustResult });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

@@ -11,6 +11,16 @@ const native = require("./napibench-native.node");
 
 function makePrices(values) {
   const base = new Date("2024-01-01").getTime();
+  const buf = new Float64Array(values.length * 2);
+  for (let i = 0; i < values.length; i++) {
+    buf[i * 2] = base + i * 86400000;
+    buf[i * 2 + 1] = values[i];
+  }
+  return buf;
+}
+
+function makePricesJs(values) {
+  const base = new Date("2024-01-01").getTime();
   return values.map((v, i) => [base + i * 86400000, v]);
 }
 
@@ -148,11 +158,11 @@ test("native calculateMacd values are rounded to 2 decimals", () => {
 });
 
 test("native output matches JS output for all three functions", () => {
-  const prices = makePrices(
-    Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i) * 10)
-  );
+  const values = Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i) * 10);
+  const prices = makePrices(values);
+  const pricesJs = makePricesJs(values);
 
-  const jsMa = calculateMovingAverages(prices, [25, 50, 100, 200], 1);
+  const jsMa = calculateMovingAverages(pricesJs, [25, 50, 100, 200], 1);
   const rustMa = JSON.parse(native.calculateMovingAveragesJson(prices, [25, 50, 100, 200], 1));
   expect(rustMa).toHaveLength(jsMa.length);
   for (let i = 0; i < jsMa.length; i++) {
@@ -162,14 +172,14 @@ test("native output matches JS output for all three functions", () => {
     }
   }
 
-  const jsRsi = calculateRSI(prices, 14, 1);
+  const jsRsi = calculateRSI(pricesJs, 14, 1);
   const rustRsi = JSON.parse(native.calculateRsiJson(prices, 14, 1));
   expect(rustRsi).toHaveLength(jsRsi.length);
   for (let i = 0; i < jsRsi.length; i++) {
     expect(Math.abs(rustRsi[i].rsi - jsRsi[i].rsi)).toBeLessThanOrEqual(0.01);
   }
 
-  const jsMacd = calculateMACD(prices, 12, 26, 9, 1);
+  const jsMacd = calculateMACD(pricesJs, 12, 26, 9, 1);
   const rustMacd = JSON.parse(native.calculateMacdJson(prices, 12, 26, 9, 1));
   expect(rustMacd).toHaveLength(jsMacd.length);
   for (let i = 0; i < jsMacd.length; i++) {
