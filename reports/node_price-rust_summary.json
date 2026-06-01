@@ -1,0 +1,23 @@
+{
+  "test_config": {
+    "endpoint": "/price-rust",
+    "target_rate": 500,
+    "duration": "1m",
+    "base_url": "http://localhost:3000"
+  },
+  "latency_ms": {
+    "avg": 659.9884342967239,
+    "p95": 2060.7607999999977,
+    "p99": null,
+    "min": 14.027,
+    "max": 7675.544,
+    "med": 383.646
+  },
+  "throughput": {
+    "rps": 35.61092923158737,
+    "total_requests": 2595
+  },
+  "errors": {
+    "fail_rate": 0
+  }
+}

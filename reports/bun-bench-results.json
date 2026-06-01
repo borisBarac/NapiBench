@@ -1,0 +1,28 @@
+[
+  {
+    "name": "Full Pipeline",
+    "results": [
+      {
+        "name": "JS - expand + all indicators (JS)",
+        "opsSec": 28,
+        "avg": 35167697.8125,
+        "min": 32292416,
+        "max": 38689625
+      },
+      {
+        "name": "Native - calculateAllFromRaw",
+        "opsSec": 69,
+        "avg": 14422528.666666666,
+        "min": 13802375,
+        "max": 14924042
+      },
+      {
+        "name": "Native - calculateAllFromRawAsync",
+        "opsSec": 69,
+        "avg": 14540346.333333334,
+        "min": 13780375,
+        "max": 14990875
+      }
+    ]
+  }
+]

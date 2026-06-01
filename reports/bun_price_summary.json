@@ -1,0 +1,23 @@
+{
+  "test_config": {
+    "endpoint": "/price",
+    "target_rate": 500,
+    "duration": "1m",
+    "base_url": "http://localhost:3033"
+  },
+  "latency_ms": {
+    "avg": 1845.1140405982965,
+    "p95": 5145.845549999998,
+    "p99": null,
+    "min": 38.937,
+    "max": 7986.628,
+    "med": 1418.531
+  },
+  "throughput": {
+    "rps": 33.43219070201628,
+    "total_requests": 2340
+  },
+  "errors": {
+    "fail_rate": 0
+  }
+}

@@ -1,0 +1,21 @@
+[
+  {
+    "name": "Full Pipeline",
+    "results": [
+      {
+        "name": "JS - expand + all indicators (JS)",
+        "opsSec": 26,
+        "avg": 37981818.18177303,
+        "min": 32400000.005960464,
+        "max": 81000000
+      },
+      {
+        "name": "Native (WASM) - calculateAllFromRaw",
+        "opsSec": 57,
+        "avg": 17556491.228153832,
+        "min": 16699999.988079071,
+        "max": 35400000.005960464
+      }
+    ]
+  }
+]

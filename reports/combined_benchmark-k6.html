@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NapiBench — K6 HTTP Benchmark</title>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b; --border: #e2e8f0; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --border: #334155; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 2rem; }
+  h1 { text-align: center; margin-bottom: 0.5rem; }
+  .subtitle { text-align: center; color: var(--muted); margin-bottom: 0.5rem; }
+  .config { text-align: center; color: var(--muted); margin-bottom: 2rem; font-size: 0.85rem; }
+  .legend { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 2rem; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; }
+  .legend-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .section-title { text-align: center; font-size: 1.2rem; margin: 2rem 0 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 0.85rem; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; max-width: 1200px; margin: 0 auto 1.5rem; }
+  .suite { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+  .suite h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+  .bar-row { margin-bottom: 0.75rem; }
+  .bar-label { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
+  .badge { color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .bar-track { background: var(--border); border-radius: 6px; height: 32px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; min-width: 0; transition: width 0.6s ease; }
+  .bar-fill.winner-bar { box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
+  .bar-value { color: #fff; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+  .winner { margin-top: 0.75rem; font-size: 0.9rem; color: var(--muted); }
+  .winner strong { color: var(--text); }
+  .footer { text-align: center; margin-top: 2rem; font-size: 0.8rem; color: var(--muted); }
+  .footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>NapiBench — K6 HTTP Benchmark</h1>
+  <p class="subtitle">API Performance Comparison</p>
+  <p class="config">Endpoints: price, price-rust</p>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#68a063"></span> Node.js (JS)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#3d8c37"></span> Node.js (Rust)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#c17a2f"></span> Bun (JS)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#d99a4f"></span> Bun (Rust)</div>
+  </div>
+  <div class="section-title">Latency</div>
+  <div class="metrics-grid">
+    
+        <div class="suite">
+          <h2>Average Latency</h2>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#68a063">Node.js (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:0.0%;background:#68a063">
+                <span class="bar-value">3318.11 ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#c17a2f">Bun (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:55.0%;background:#c17a2f">
+                <span class="bar-value">1845.11 ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#3d8c37">Node.js (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:99.3%;background:#3d8c37">
+                <span class="bar-value">659.99 ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#d99a4f">Bun (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#d99a4f">
+                <span class="bar-value">642.21 ms</span>
+              </div>
+            </div>
+          </div>
+          <p class="winner">Bun (Rust) is <strong>5.17x</strong> faster</p>
+        </div>
+    
+        <div class="suite">
+          <h2>P95 Latency</h2>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#68a063">Node.js (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:0.0%;background:#68a063">
+                <span class="bar-value">8437.43 ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#c17a2f">Bun (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:51.6%;background:#c17a2f">
+                <span class="bar-value">5145.85 ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#3d8c37">Node.js (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#3d8c37">
+                <span class="bar-value">2060.76 ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#d99a4f">Bun (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:94.5%;background:#d99a4f">
+                <span class="bar-value">2412.47 ms</span>
+              </div>
+            </div>
+          </div>
+          <p class="winner">Node.js (Rust) is <strong>4.09x</strong> faster</p>
+        </div>
+    
+  </div>
+  <div class="section-title">Throughput &amp; Errors</div>
+  <div class="metrics-grid">
+    
+        <div class="suite">
+          <h2>Requests/sec</h2>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#68a063">Node.js (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#68a063">
+                <span class="bar-value">62.38 req/s</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#c17a2f">Bun (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:53.6%;background:#c17a2f">
+                <span class="bar-value">33.43 req/s</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#3d8c37">Node.js (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:57.1%;background:#3d8c37">
+                <span class="bar-value">35.61 req/s</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#d99a4f">Bun (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:51.5%;background:#d99a4f">
+                <span class="bar-value">32.12 req/s</span>
+              </div>
+            </div>
+          </div>
+          <p class="winner">Node.js (JS) handles <strong>0.51x</strong> more requests</p>
+        </div>
+    
+        <div class="suite">
+          <h2>Error Rate</h2>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#68a063">Node.js (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:0.0%;background:#68a063">
+                <span class="bar-value">15.48 %</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#c17a2f">Bun (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#c17a2f">
+                <span class="bar-value">0.00 %</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#3d8c37">Node.js (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#3d8c37">
+                <span class="bar-value">0.00 %</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#d99a4f">Bun (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#d99a4f">
+                <span class="bar-value">0.00 %</span>
+              </div>
+            </div>
+          </div>
+          <p class="winner">Bun (JS) is <strong>Infinityx</strong> faster</p>
+        </div>
+  </div>
+  <div class="section-title">Server Resources</div>
+  <div class="metrics-grid">
+    
+        <div class="suite">
+          <h2>Peak RSS</h2>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#68a063">Node.js (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:84.4%;background:#68a063">
+                <span class="bar-value">292.00 MB</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#c17a2f">Bun (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:0.0%;background:#c17a2f">
+                <span class="bar-value">470.00 MB</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#3d8c37">Node.js (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:88.6%;background:#3d8c37">
+                <span class="bar-value">283.00 MB</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#d99a4f">Bun (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#d99a4f">
+                <span class="bar-value">259.00 MB</span>
+              </div>
+            </div>
+          </div>
+          <p class="winner">Bun (Rust) is <strong>1.81x</strong> faster</p>
+        </div>
+    
+        <div class="suite">
+          <h2>Avg CPU</h2>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#68a063">Node.js (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:0.0%;background:#68a063">
+                <span class="bar-value">100.80 %</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#c17a2f">Bun (JS)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:68.9%;background:#c17a2f">
+                <span class="bar-value">50.20 %</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#3d8c37">Node.js (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:89.4%;background:#3d8c37">
+                <span class="bar-value">35.20 %</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-row">
+            <div class="bar-label">
+              <span class="badge" style="background:#d99a4f">Bun (Rust)</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill winner-bar" style="width:100.0%;background:#d99a4f">
+                <span class="bar-value">27.40 %</span>
+              </div>
+            </div>
+          </div>
+          <p class="winner">Bun (Rust) is <strong>3.68x</strong> faster</p>
+        </div>
+  </div>
+  <p class="footer">Generated with <a href="https://k6.io">k6</a></p>
+</body>
+</html>
